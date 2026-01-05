@@ -1,4 +1,5 @@
 import Navbar from '@/components/Navbar/NavBar';
+import Dock from '@/components/dock/Dock';
 
 export default function Home() {
   return (
@@ -14,6 +15,8 @@ export default function Home() {
           Empieza tu experiencia con una interfaz moderna, rápida y clara.
         </p>
       </section>
+
+       <Dock />
     </main>
   );
 }
