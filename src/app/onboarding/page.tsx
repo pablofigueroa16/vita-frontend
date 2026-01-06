@@ -1,507 +1,519 @@
 "use client";
 
+import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
-import styles from "./onboarding.module.css";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-type AuthMode = "register" | "login";
-
-type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
-const STORAGE_KEY = "vita.appToken";
-const REMEMBER_EMAIL_KEY = "vita.rememberEmail";
-const API_PREFIX = "/api/vita";
-
-function safeJsonParse(text: string): unknown {
-  try {
-    return text ? (JSON.parse(text) as unknown) : null;
-  } catch {
-    return text;
-  }
-}
-
-function errorToMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return "Error desconocido";
-  }
-}
-
-async function apiRequest<T>(
-  path: string,
-  init: RequestInit,
-  token?: string
-): Promise<{ ok: true; data: T } | { ok: false; error: string; details?: unknown }> {
-  const headers = new Headers(init.headers);
-  headers.set("accept", "application/json");
-  if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
-  if (token) headers.set("authorization", `Bearer ${token}`);
-
-  const res = await fetch(`${API_PREFIX}${path}`,
-    {
-      ...init,
-      headers,
-      cache: "no-store",
-    }
-  );
-
-  const text = await res.text();
-  const parsed = safeJsonParse(text);
-
-  if (!res.ok) {
-    const msg =
-      typeof parsed === "object" && parsed !== null && "message" in parsed
-        ? String((parsed as { message?: unknown }).message)
-        : typeof parsed === "string"
-          ? parsed
-          : res.statusText || `HTTP ${res.status}`;
-
-    return { ok: false, error: msg, details: parsed };
-  }
-
-  return { ok: true, data: parsed as T };
-}
-
-function maskToken(token: string): string {
-  if (token.length < 18) return token;
-  return `${token.slice(0, 10)}…${token.slice(-8)}`;
-}
-
-type LoginResponse = { appToken?: string; user?: unknown; cognito?: unknown };
-type KycInitiateResponse = { sessionId?: string; url?: string };
-type KycStatusResponse = {
-  status?: string;
-  diditVerificationUrl?: string | null;
-  diditSessionId?: string | null;
-};
-
-function IconUser({ title }: { title?: string }) {
+function FadeSlide({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden={title ? undefined : true}
-      role={title ? "img" : "presentation"}
+    <div
+      className={`transition-all duration-500 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"} ${className}`}
     >
-      {title ? <title>{title}</title> : null}
-      <path
-        d="M20 21a8 8 0 0 0-16 0"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M12 13a5 5 0 1 0-5-5 5 5 0 0 0 5 5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-    </svg>
+      {children}
+    </div>
   );
 }
 
-function IconEye({ off, title }: { off?: boolean; title?: string }) {
-  return off ? (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden={title ? undefined : true}
-      role={title ? "img" : "presentation"}
-    >
-      {title ? <title>{title}</title> : null}
-      <path
-        d="M3 3l18 18"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M10.7 10.7A2.5 2.5 0 0 0 12 14.5a2.5 2.5 0 0 0 2.3-3.3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M6.4 6.4C4.6 7.8 3.3 9.7 2.5 12c1.8 5.1 5.9 8 9.5 8 1.6 0 3.3-.6 4.9-1.8"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M9.2 4.5A9.2 9.2 0 0 1 12 4c3.6 0 7.7 2.9 9.5 8a12.2 12.2 0 0 1-3.1 4.6"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  ) : (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden={title ? undefined : true}
-      role={title ? "img" : "presentation"}
-    >
-      {title ? <title>{title}</title> : null}
-      <path
-        d="M2.5 12C4.3 6.9 8.4 4 12 4s7.7 2.9 9.5 8c-1.8 5.1-5.9 8-9.5 8s-7.7-2.9-9.5-8Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
-}
+const categories: { label: string; emoji: string }[] = [
+  { label: "Electrónica & Gadgets", emoji: "💻" },
+  { label: "Belleza & Cuidado personal", emoji: "💅" },
+  { label: "Hogar & Decoración", emoji: "🏠" },
+  { label: "Deportes & Fitness", emoji: "🎾" },
+  { label: "Supermercado & Gourmet", emoji: "🥑" },
+  { label: "Joyería & Relojes", emoji: "💍" },
+  { label: "Viajes & Experiencias", emoji: "✈️" },
+  { label: "Software & Servicios Digitales", emoji: "📊" },
+  { label: "Educación & Cursos", emoji: "📚" },
+  { label: "Mascotas", emoji: "🐶" },
+  { label: "Bebés & Maternidad", emoji: "🧒" },
+  { label: "Arte & Coleccionables", emoji: "🎨" },
+  { label: "Bienes Raíces", emoji: "🏢" },
+];
+
+const budgetOptions = [
+  "< US$50",
+  "US$50–150",
+  "US$150–500",
+  "US$500–2,000",
+];
+
+// Nueva lista de prioridades (vista posterior al presupuesto)
+const prioritiesOptions: { label: string; icon: string }[] = [
+  { label: "Precio bajo / Descuentos", icon: "🏷️" },
+  { label: "Envíos rápidos", icon: "📦" },
+  { label: "Tiendas Verificadas", icon: "✅" },
+  { label: "Pagos en criptomonedas", icon: "🪙" },
+  { label: "Pagos con tarjeta / Apple & Google Pay", icon: "💳" },
+  { label: "Marcas Globales", icon: "®" },
+  { label: "Sostenibilidad / Materiales ECO", icon: "♻️" },
+];
 
 export default function OnboardingPage() {
-  const [mode, setMode] = useState<AuthMode>("login");
-  const [busy, setBusy] = useState(false);
-  const [output, setOutput] = useState<JsonValue | string | null>(null);
+  const [step, setStep] = useState(0);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [budget, setBudget] = useState<string | null>(null);
+  const [prioritiesSelected, setPrioritiesSelected] = useState<string[]>([]);
+  const router = useRouter();
 
-  const [appToken, setAppToken] = useState<string>("");
-  const [rememberEmail, setRememberEmail] = useState<boolean>(true);
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-
-  // Auth
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  // Register-only
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-
-  // Confirm
-  const [confirmCode, setConfirmCode] = useState("");
-
-  const hasToken = appToken.trim().length > 0;
-
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   useEffect(() => {
-    const savedToken = window.localStorage.getItem(STORAGE_KEY);
-    if (savedToken) setAppToken(savedToken);
-
-    const rememberedEmail = window.localStorage.getItem(REMEMBER_EMAIL_KEY);
-    if (rememberedEmail) {
-      setEmail(rememberedEmail);
-      setRememberEmail(true);
-    }
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const getTheme = () => (root.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+    setTheme(getTheme());
+    const observer = new MutationObserver(() => setTheme(getTheme()));
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
   }, []);
 
+  const logoSrc = useMemo(() => (theme === 'light' ? '/vita-logo-negro.png' : '/vita-logo-blanco.png'), [theme]);
+
+  const progress = useMemo(() => (step === 0 ? 35 : step === 1 ? 70 : step === 2 ? 90 : step === 3 ? 95 : 100), [step]);
+
+  // Redirección automática en el último paso (mantiene fidelidad visual)
   useEffect(() => {
-    if (appToken) window.localStorage.setItem(STORAGE_KEY, appToken);
-    else window.localStorage.removeItem(STORAGE_KEY);
-  }, [appToken]);
+    if (step === 4) {
+      const t = setTimeout(() => {
+        router.push("/");
+      }, 5000);
+      return () => clearTimeout(t);
+    }
+  }, [step, router]);
 
+  // Confeti espectacular y optimizado para reemplazar imágenes estáticas
   useEffect(() => {
-    if (!rememberEmail) {
-      window.localStorage.removeItem(REMEMBER_EMAIL_KEY);
-      return;
-    }
-    if (email) window.localStorage.setItem(REMEMBER_EMAIL_KEY, email);
-  }, [rememberEmail, email]);
+    if (step !== 4) return;
 
-  const quickStatus = useMemo(() => {
-    if (!hasToken) return "sin sesión";
-    return `token: ${maskToken(appToken)}`;
-  }, [appToken, hasToken]);
+    // Verificar si el usuario prefiere movimiento reducido
+    const prefersReducedMotion = typeof window !== "undefined" && 
+      window.matchMedia && 
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  async function run<T>(fn: () => Promise<T>) {
-    setBusy(true);
-    setOutput(null);
-    try {
-      const result = await fn();
-      setOutput(result as unknown as JsonValue);
-    } catch (e) {
-      setOutput({ error: errorToMessage(e) });
-    } finally {
-      setBusy(false);
-    }
-  }
+    let cleared = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const timeoutIds: ReturnType<typeof setTimeout>[] = [];
+
+    (async () => {
+      try {
+        const mod = await import("canvas-confetti");
+        const confetti = mod.default;
+        
+        if (cleared) return;
+
+        const isMobile = typeof window !== "undefined" ? window.innerWidth < 640 : false;
+        const scalar = isMobile ? 1.0 : 1.4;
+
+        // Colores vibrantes que coinciden con el tema
+        const colors = ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#A8E6CF', '#FF8A80'];
+
+        if (prefersReducedMotion) {
+          // Versión sutil para usuarios con preferencia de movimiento reducido
+          confetti({
+            particleCount: 30,
+            spread: 45,
+            origin: { y: 0.6 },
+            scalar: scalar * 0.7,
+            zIndex: 9999,
+            colors,
+            gravity: 0.5,
+            ticks: 120
+          });
+        } else {
+          // Versión completa para usuarios sin restricciones de movimiento
+          
+          // 1. Estallido central espectacular
+          confetti({
+            particleCount: 150,
+            spread: 90,
+            origin: { y: 0.5 },
+            scalar,
+            zIndex: 9999,
+            colors,
+            shapes: ['square', 'circle'],
+            gravity: 0.8,
+            drift: 0.2,
+            ticks: 250
+          });
+
+          // 2. Estallidos desde las esquinas superiores
+          timeoutIds.push(setTimeout(() => {
+            if (cleared) return;
+            confetti({
+              particleCount: 80,
+              spread: 70,
+              origin: { x: 0.1, y: 0.2 },
+              scalar,
+              zIndex: 9999,
+              colors,
+              gravity: 0.7,
+              ticks: 200,
+              angle: 45
+            });
+          }, 200));
+
+          timeoutIds.push(setTimeout(() => {
+            if (cleared) return;
+            confetti({
+              particleCount: 80,
+              spread: 70,
+              origin: { x: 0.9, y: 0.2 },
+              scalar,
+              zIndex: 9999,
+              colors,
+              gravity: 0.7,
+              ticks: 200,
+              angle: 135
+            });
+          }, 400));
+
+          // 3. Lluvia de confeti desde arriba
+          timeoutIds.push(setTimeout(() => {
+            if (cleared) return;
+            confetti({
+              particleCount: 100,
+              spread: 120,
+              origin: { y: 0.1 },
+              scalar,
+              zIndex: 9999,
+              colors,
+              gravity: 0.6,
+              ticks: 300
+            });
+          }, 600));
+
+          // 4. Stream lateral continuo más intenso
+          const duration = 2500;
+          const animationEnd = Date.now() + duration;
+          const defaults = { 
+            startVelocity: 35, 
+            ticks: 150, 
+            spread: 70, 
+            scalar, 
+            zIndex: 9999,
+            colors,
+            gravity: 0.8
+          } as const;
+
+          intervalId = setInterval(() => {
+            if (cleared) return;
+            
+            confetti({
+              ...defaults,
+              particleCount: 25,
+              angle: 60,
+              origin: { x: 0, y: 0.7 },
+            });
+            
+            confetti({
+              ...defaults,
+              particleCount: 25,
+              angle: 120,
+              origin: { x: 1, y: 0.7 },
+            });
+
+            if (Math.random() > 0.7) {
+              confetti({
+                ...defaults,
+                particleCount: 15,
+                angle: 90,
+                origin: { x: 0.5, y: 0.1 },
+                spread: 40
+              });
+            }
+
+            if (Date.now() > animationEnd && intervalId) {
+              clearInterval(intervalId);
+              intervalId = null;
+              try {
+                 const confettiInstance = confetti as { reset?: () => void };
+                 confettiInstance.reset?.();
+               } catch {
+                  // Silently handle cleanup
+                }
+            }
+          }, 150);
+
+          // 5. Efecto final de celebración
+          timeoutIds.push(setTimeout(() => {
+            if (cleared) return;
+            confetti({
+              particleCount: 200,
+              spread: 100,
+              origin: { y: 0.6 },
+              scalar: scalar * 1.2,
+              zIndex: 9999,
+              colors,
+              shapes: ['square', 'circle'],
+              gravity: 0.9,
+              ticks: 300
+            });
+          }, 1000));
+        }
+
+      } catch {
+          // Silently handle errors in production
+        }
+    })();
+
+    return () => {
+      cleared = true;
+      if (intervalId) clearInterval(intervalId);
+      timeoutIds.forEach(id => clearTimeout(id));
+    };
+  }, [step]);
+  const toggle = (label: string) => {
+    setSelected((prev) => (prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]));
+  };
 
   return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <div className={styles.split}>
-          <section className={styles.leftPane}>
-            <div className={styles.heroPhone}>
-              <div className={styles.heroScreen}>
-                <Image
-                  className={styles.heroGif}
-                  src="/didit.gif"
-                  alt="Flujo de verificación de identidad (DIDIT)"
-                  fill
-                  sizes="(max-width: 980px) 90vw, 380px"
-                  unoptimized
-                  priority
+    <section className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+      <div className="min-h-[75vh] flex flex-col items-center justify-center text-center gap-6 sm:gap-8">
+        <Image
+          src={logoSrc}
+          alt="VITA"
+          width={220}
+          height={80}
+          priority
+          className="h-32 w-auto opacity-90"
+        />
+
+        {step === 0 ? (
+          <FadeSlide key="step-0" className="w-full">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-semibold leading-tight text-text-strong">
+              Gracias por unirte. En VITA todos somos 100% verificados (KYC/KYB) para compras seguras, pagos
+              cripto/fiat y mejores ofertas.
+            </h1>
+            <p className="mt-3 text-sm sm:text-base text-text-secondary">Personalicemos tu experiencia en 15 segundos.</p>
+
+            <div className="mt-6 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="inline-flex items-center justify-center rounded-lg bg-primary-600 hover:bg-primary-500 active:bg-primary-700 text-text-on-primary text-sm font-medium px-5 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+              >
+                Comenzar
+              </button>
+            </div>
+          </FadeSlide>
+        ) : step === 1 ? (
+          <FadeSlide key="step-1" className="w-full">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-semibold text-text-strong">
+              ¿Qué categorías te interesan? <span className="text-text-secondary text-lg sm:text-xl">(multi-select, chips)</span>
+            </h2>
+
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+              {categories.map((c) => {
+                const active = selected.includes(c.label);
+                return (
+                  <button
+                    key={c.label}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggle(c.label)}
+                    className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-800 ${
+                      active
+                        ? "bg-primary-700/15 border-primary-400 text-primary-100"
+                        : "border-border-subtle text-text-strong hover:bg-bg-hover"
+                    }`}
+                  >
+                    <span className="text-base leading-none">{c.emoji}</span>
+                    <span className="whitespace-nowrap">{c.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-12 sm:mt-16 w-full max-w-2xl mx-auto">
+              <p className="text-sm text-text-secondary mb-2">Tu progreso...</p>
+              <div className="h-3 w-full rounded-full bg-black/80 dark:bg-black overflow-hidden border border-border-subtle">
+                <div
+                  className="h-full bg-gradient-to-r from-sky-300 via-primary-500 to-black transition-[width] duration-500 ease-out"
+                  style={{ width: `${progress}%` }}
                 />
               </div>
             </div>
 
-            <h2 className={styles.heroTitle}>
-              <span className={styles.heroTitleAccent}>Verifica</span> tu identidad
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setStep(0)}
+                className="inline-flex items-center justify-center rounded-lg border border-border-subtle text-sm font-medium text-text-secondary hover:bg-bg-hover px-5 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+              >
+                Atrás
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="inline-flex items-center justify-center rounded-lg bg-primary-600 hover:bg-primary-500 active:bg-primary-700 text-text-on-primary text-sm font-medium px-5 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+              >
+                Siguiente
+              </button>
+            </div>
+          </FadeSlide>
+        ) : step === 2 ? (
+          <FadeSlide key="step-2" className="w-full">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-semibold text-text-strong">
+              ¿Cuál es tu presupuesto promedio por compra? <span className="text-text-secondary text-lg sm:text-xl">(single-select, chips)</span>
             </h2>
-            <p className={styles.heroSubtitle}>KYC rápido con IA</p>
-            <p className={styles.heroText}>Compra seguro y evita cuentas falsas.</p>
 
-            <a
-              className={styles.ctaBtn}
-              href="#form"
-              onClick={(e) => {
-                e.preventDefault();
-                const el = document.getElementById("form");
-                el?.scrollIntoView({ behavior: "smooth", block: "center" });
-                window.setTimeout(() => {
-                  const input = document.getElementById("auth-email") as HTMLInputElement | null;
-                  input?.focus();
-                }, 250);
-              }}
-            >
-              Continuar
-              <span className={styles.ctaIcon} aria-hidden="true">
-                →
-              </span>
-            </a>
-          </section>
-
-          <div className={styles.rightPane} id="form">
-            <section className={styles.glassCard}>
-              <div className={styles.cardHeader}>
-                <h1 className={styles.authTitle}>{mode === "login" ? "Login" : "Sign up"}</h1>
-                <p className={`${styles.cardSubtitle} ${styles.authSubtitle}`}>
-                  <span className={styles.pill}>{quickStatus}</span>
-                </p>
-              </div>
-
-              <div className={styles.cardBody}>
-                <form
-                  className={styles.form}
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void run(async () => {
-                      if (mode === "register") {
-                        const payload = { email, password, firstName, lastName };
-                        return await apiRequest("/auth/register", {
-                          method: "POST",
-                          body: JSON.stringify(payload),
-                        });
-                      }
-
-                      const payload = { email, password };
-                      const res = await apiRequest<LoginResponse>(
-                        "/auth/login",
-                        {
-                          method: "POST",
-                          body: JSON.stringify(payload),
-                        }
-                      );
-
-                      if (res.ok && res.data?.appToken) {
-                        const token = String(res.data.appToken);
-                        setAppToken(token);
-                        window.localStorage.setItem(STORAGE_KEY, token);
-
-                        // Auto: iniciar KYC inmediatamente y redirigir a DIDIT URL
-                        const kyc = await apiRequest<KycInitiateResponse>(
-                          "/kyc/initiate",
-                          { method: "POST" },
-                          token
-                        );
-
-                        // Si el backend devuelve URL, redirigimos
-                        if (kyc.ok && kyc.data.url) {
-                          const url = String(kyc.data.url);
-                          window.location.assign(url);
-                          return { login: res, kyc, redirect: url };
-                        }
-
-                        // Si ya había KYC en proceso (u otro caso), intentamos recuperar la URL existente
-                        const status = await apiRequest<KycStatusResponse>(
-                          "/kyc/status",
-                          { method: "GET" },
-                          token
-                        );
-                        if (status.ok && status.data.diditVerificationUrl) {
-                          const url = String(status.data.diditVerificationUrl);
-                          window.location.assign(url);
-                          return { login: res, kyc, status, redirect: url };
-                        }
-
-                        return { login: res, kyc, status };
-                      }
-
-                      return res;
-                    });
-                  }}
-                >
-                  <div className={styles.field}>
-                    <span className={styles.label}>Email</span>
-                    <div className={styles.inputWrap}>
-                      <input
-                        id="auth-email"
-                        className={`${styles.input} ${styles.inputPadded}`}
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        autoComplete="email"
-                        required
-                      />
-                      <span className={styles.iconRight} aria-hidden="true">
-                        <IconUser />
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={styles.field}>
-                    <span className={styles.label}>Password</span>
-                    <div className={styles.inputWrap}>
-                      <input
-                        className={`${styles.input} ${styles.inputPadded}`}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        type={showPassword ? "text" : "password"}
-                        autoComplete={mode === "login" ? "current-password" : "new-password"}
-                        required
-                      />
-                      <button
-                        type="button"
-                        className={`${styles.iconRight} ${styles.iconBtn}`}
-                        onClick={() => setShowPassword((v) => !v)}
-                        title={showPassword ? "Ocultar password" : "Mostrar password"}
-                        aria-label={showPassword ? "Ocultar password" : "Mostrar password"}
-                      >
-                        <IconEye off={!showPassword} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {mode === "register" && (
-                    <div className={styles.row2}>
-                      <label className={styles.label}>
-                        Nombre
-                        <input
-                          className={styles.input}
-                          value={firstName}
-                          onChange={(e) => setFirstName(e.target.value)}
-                          placeholder="Pablo"
-                        />
-                      </label>
-                      <label className={styles.label}>
-                        Apellido
-                        <input
-                          className={styles.input}
-                          value={lastName}
-                          onChange={(e) => setLastName(e.target.value)}
-                          placeholder="Figueroa"
-                        />
-                      </label>
-                    </div>
-                  )}
-
-                  <div className={styles.rowBetween}>
-                    <label className={styles.check}>
-                      <input
-                        type="checkbox"
-                        checked={rememberEmail}
-                        onChange={(e) => setRememberEmail(e.target.checked)}
-                      />
-                      Remember me
-                    </label>
-
-                    <button
-                      type="button"
-                      className={styles.textBtn}
-                      onClick={() =>
-                        void run(async () => {
-                          if (!email) return { ok: false, error: "Ingresa el email primero." };
-                          return await apiRequest("/auth/forgot-password", {
-                            method: "POST",
-                            body: JSON.stringify({ email }),
-                          });
-                        })
-                      }
-                      disabled={busy}
-                    >
-                      Forgot Password?
-                    </button>
-                  </div>
-
-                  <button className={`${styles.btn} ${styles.btnPrimary}`} disabled={busy}>
-                    {busy ? "Procesando…" : mode === "login" ? "Login" : "Sign up"}
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+              {budgetOptions.map((label) => {
+                const active = budget === label;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setBudget(active ? null : label)}
+                    className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-800 ${
+                      active
+                        ? "bg-primary-700/15 border-primary-400 text-primary-100"
+                        : "border-border-subtle text-text-strong hover:bg-bg-hover"
+                    }`}
+                  >
+                    <span className="text-base leading-none">💰</span>
+                    <span className="whitespace-nowrap">{label}</span>
                   </button>
+                );
+              })}
+            </div>
 
-                  <div className={styles.footerRow}>
-                    <span>{mode === "login" ? "Don't have an account?" : "Already have an account?"}</span>
-                    <button
-                      type="button"
-                      className={styles.textBtn}
-                      onClick={() => setMode((m) => (m === "login" ? "register" : "login"))}
-                      disabled={busy}
-                    >
-                      {mode === "login" ? "Sign up" : "Login"}
-                    </button>
-                  </div>
-                </form>
-
-                {output !== null && (
-                  <pre className={styles.monoBox}>
-                    {typeof output === "string" ? output : JSON.stringify(output, null, 2)}
-                  </pre>
-                )}
-
-                {mode === "register" && (
-                  <>
-                    <div className={styles.divider} />
-                    <p className={styles.sectionTitle}>Confirmar cuenta (si aplica)</p>
-                    <form
-                      className={styles.form}
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void run(async () => {
-                          const payload = { email, code: confirmCode };
-                          return await apiRequest("/auth/confirm", {
-                            method: "POST",
-                            body: JSON.stringify(payload),
-                          });
-                        });
-                      }}
-                    >
-                      <label className={styles.label}>
-                        Código
-                        <input
-                          className={styles.input}
-                          value={confirmCode}
-                          onChange={(e) => setConfirmCode(e.target.value)}
-                          placeholder="123456"
-                        />
-                      </label>
-                      <button className={styles.btn} disabled={busy || !email || !confirmCode}>
-                        Confirmar
-                      </button>
-                    </form>
-                  </>
-                )}
+            <div className="mt-12 sm:mt-16 w-full max-w-2xl mx-auto">
+              <p className="text-sm text-text-secondary mb-2">Tu progreso...</p>
+              <div className="h-3 w-full rounded-full bg-black/80 dark:bg-black overflow-hidden border border-border-subtle">
+                <div
+                  className="h-full bg-gradient-to-r from-sky-300 via-primary-500 to-black transition-[width] duration-500 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
-            </section>
-          </div>
-        </div>
+            </div>
+
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="inline-flex items-center justify-center rounded-lg border border-border-subtle text-sm font-medium text-text-secondary hover:bg-bg-hover px-5 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+              >
+                Atrás
+              </button>
+              <button
+                type="button"
+                disabled={!budget}
+                onClick={() => budget && setStep(3)}
+                className={`inline-flex items-center justify-center rounded-lg text-sm font-medium px-5 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${
+                  budget
+                    ? "bg-primary-600 hover:bg-primary-500 active:bg-primary-700 text-text-on-primary"
+                    : "bg-bg-700/40 text-text-secondary cursor-not-allowed"
+                }`}
+              >
+                Continuar
+              </button>
+            </div>
+          </FadeSlide>
+        ) : step === 3 ? (
+          <FadeSlide key="step-3" className="w-full">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-semibold text-text-strong">
+              ¿Qué priorizas al comprar? <span className="text-text-secondary text-lg sm:text-xl">(elige hasta 2, chips)</span>
+            </h2>
+
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+              {prioritiesOptions.map((opt) => {
+                const active = prioritiesSelected.includes(opt.label);
+                const reachedMax = !active && prioritiesSelected.length >= 2;
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    aria-pressed={active}
+                    aria-disabled={reachedMax}
+                    onClick={() => {
+                      setPrioritiesSelected((prev) => {
+                        if (prev.includes(opt.label)) return prev.filter((l) => l !== opt.label);
+                        if (prev.length >= 2) return prev; // limita a 2
+                        return [...prev, opt.label];
+                      });
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-800 ${
+                      active
+                        ? "bg-primary-700/15 border-primary-400 text-primary-100"
+                        : reachedMax
+                        ? "border-border-subtle text-text-secondary opacity-60 cursor-not-allowed"
+                        : "border-border-subtle text-text-strong hover:bg-bg-hover"
+                    }`}
+                  >
+                    <span className="text-base leading-none">{opt.icon}</span>
+                    <span className="whitespace-nowrap">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-12 sm:mt-16 w-full max-w-2xl mx-auto">
+              <p className="text-sm text-text-secondary mb-2">Tu progreso...</p>
+              <div className="h-3 w-full rounded-full bg-black/80 dark:bg-black overflow-hidden border border-border-subtle">
+                <div
+                  className="h-full bg-gradient-to-r from-sky-300 via-primary-500 to-black transition-[width] duration-500 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="inline-flex items-center justify-center rounded-lg border border-border-subtle text-sm font-medium text-text-secondary hover:bg-bg-hover px-5 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+              >
+                Atrás
+              </button>
+              <button
+                type="button"
+                disabled={prioritiesSelected.length === 0}
+                onClick={() => setStep(4)}
+                className={`inline-flex items-center justify-center rounded-lg text-sm font-medium px-5 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 ${
+                   prioritiesSelected.length > 0
+                     ? "bg-primary-600 hover:bg-primary-500 active:bg-primary-700 text-text-on-primary"
+                     : "bg-bg-700/40 text-text-secondary cursor-not-allowed"
+                 }`}
+               >
+                 Continuar
+               </button>
+             </div>
+           </FadeSlide>
+        ) : (
+          <FadeSlide key="step-4" className="w-full">
+            <div className="relative overflow-visible">
+              {/* Área para confeti animado - reemplaza las imágenes estáticas */}
+              <div className="absolute inset-0 pointer-events-none" id="confetti-container" />
+            </div>
+            <h2 className="relative z-10 text-2xl sm:text-3xl md:text-4xl font-semibold text-text-strong mt-2">
+              Serás redirigido en minutos al home.
+            </h2>
+            <p className="relative z-10 mt-3 text-lg sm:text-xl md:text-2xl text-text-strong max-w-3xl mx-auto">
+              Disfruta de una nueva experiencia de compra donde tú como cliente eres nuestra prioridad.
+            </p>
+            {/* Mensaje y progreso */}
+            <div className="relative mt-14 sm:mt-16 w-full max-w-3xl mx-auto overflow-visible">
+              <p className="text-base sm:text-lg text-text-secondary text-center mb-3">¡Felicidades hemos terminado tu configuración!</p>
+              <div className="h-3 w-full rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-sky-500 to-primary-700 transition-[width] duration-700 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Enlace de navegación accesible (no altera la fidelidad visual) */}
+            <Link href="/" className="sr-only">Ir al home ahora</Link>
+          </FadeSlide>
+        )}
       </div>
-    </div>
+    </section>
   );
 }

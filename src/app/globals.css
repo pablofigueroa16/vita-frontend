@@ -1,6 +1,36 @@
+/* ===========================
+   👉 IMPORTACIÓN TAILWIND
+=========================== */
 @import "tailwindcss";
 
-@theme {
+/* ===========================
+   👉 FUENTES
+=========================== */
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  html,
+  body {
+    @apply min-h-screen w-full;
+  }
+
+  body {
+    @apply text-white bg-fixed bg-center bg-cover;
+    background-image: url("https://i.pinimg.com/1200x/2e/d8/81/2ed8816dc0776c77de77ac6e5ecbb607.jpg");
+  }
+}
+
+/* ===========================
+   👉 PALETA OSCURA (DEFAULT)
+   — Aquí corrijo todas las variables rotas
+=========================== */
+:root {
+  color-scheme: dark;
+
+  /* Base VITA */
   --color-bg: hsl(205 65% 7%);
   --color-card: hsl(205 55% 12%);
   --color-primary: hsl(205 50% 16%);
@@ -10,5 +40,189 @@
   --color-text: hsl(0 0% 95%);
   --color-text-secondary: hsl(0 0% 70%);
 
-  --font-family-modulus: var(--font-modulus);
+  /* 🔥 Añadidas para evitar errores */
+  --color-bg-900: var(--color-bg);
+  --color-bg-800: hsl(205 55% 10%);
+  --color-bg-hover: hsl(205 60% 9%);
+  --color-bg-overlay: rgba(0 0 0 / 0.5);
+
+  --color-text-primary: var(--color-text);
+  --color-text-strong: #ffffff;
+  --color-text-muted: #9ba3b0;
+
+  --color-border-subtle: rgba(255 255 255 / 0.08);
+  --color-divider: rgba(255 255 255 / 0.12);
+
+  --color-link: var(--color-brand);
+  --color-link-hover: hsl(200 100% 55%);
+
+  /* Ring */
+  --color-ring: var(--color-brand);
+  --color-ring-strong: hsl(200 100% 60%);
 }
+
+/* ===========================
+   👉 ESTILOS BASE
+=========================== */
+@layer base {
+  html,
+ 
+
+  a {
+    color: var(--color-link);
+  }
+  a:hover {
+    color: var(--color-link-hover);
+  }
+
+  button {
+    @apply cursor-pointer;
+  }
+}
+
+/* ===========================
+   👉 TEMA CLARO
+=========================== */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg-950: #ffffff;
+  --color-bg-900: #f9fbff;
+  --color-bg-800: #f1f4fa;
+  --color-bg-hover: #ecf2ff;
+  --color-bg-overlay: rgb(255 255 255 / 0.6);
+
+  --color-text-strong: #0b1220;
+  --color-text-primary: #1c2434;
+  --color-text-secondary: #46546b;
+  --color-text-muted: #6b7a90;
+  --color-text-on-primary: #ffffff;
+
+  --color-border-subtle: #e3e8f0;
+  --color-divider: #e6ebf3;
+
+  --color-btn-primary: var(--color-primary-600);
+  --color-btn-primary-hover: var(--color-primary-700);
+  --color-btn-primary-active: var(--color-primary-800);
+  --color-btn-primary-text: var(--color-text-on-primary);
+  --color-btn-primary-disabled: #cbd7ff;
+  --color-btn-primary-disabled-text: #6b7db6;
+
+  --color-link: var(--color-primary-600);
+  --color-link-hover: var(--color-primary-700);
+  --color-visited: #6d28d9;
+  --color-ring: var(--color-primary-500);
+  --color-ring-strong: var(--color-primary-600);
+}
+
+/* ===========================
+   👉 TRANSICIÓN DE TEMA
+=========================== */
+@media (prefers-reduced-motion: no-preference) {
+  [data-theme-transition] *,
+  [data-theme-transition] *::before,
+  [data-theme-transition] *::after {
+    transition:
+      background-color 200ms ease,
+      color 200ms ease,
+      border-color 200ms ease,
+      fill 200ms ease,
+      stroke 200ms ease;
+  }
+}
+
+/* ===========================
+   👉 ANIMACIONES
+=========================== */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.25s ease-out forwards;
+}
+
+/* ===========================
+   👉 GLASSMORPHISM GLOBAL
+=========================== */
+
+
+:root {
+  /* Paleta VITA */
+  --vita-dark: 205 65% 7%;
+  --vita-card: 205 55% 12%;
+  --vita-brand: 190 100% 45%;
+  --vita-text: 0 0% 95%;
+  --vita-text-muted: 0 0% 70%;
+}
+
+/* Helpers */
+
+
+.ring-brand {
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12);
+}
+
+.text-vita {
+  color: hsl(var(--vita-text));
+}
+
+input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* Small responsive tweaks */
+@media (max-width: 640px) {
+  .w-28 {
+    width: 7rem;
+  }
+}
+/* ===== Vita Holo Glass Helpers ===== */
+/* ================= Swiper Flechas – Vita ================= */
+
+.swiper-button-prev,
+.swiper-button-next {
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
+
+  transition: all 0.25s ease;
+}
+
+.swiper-button-prev:hover,
+.swiper-button-next:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.35),
+    0 18px 60px rgba(255,255,255,0.18);
+  color: white;
+}
+
+.swiper-button-prev::after,
+.swiper-button-next::after {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* opcional: ocultar en mobile */
+@media (max-width: 640px) {
+  .swiper-button-prev,
+  .swiper-button-next {
+    display: none;
+  }
+}
+
