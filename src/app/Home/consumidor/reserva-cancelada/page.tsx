@@ -48,7 +48,7 @@ export default function ReservaCanceladaPage() {
               </div>
               <div>
                 <p className="text-white font-semibold text-lg">Cancelación confirmada</p>
-                <p className="mt-1 text-white/60 text-sm">Puedes reservar otra vez cuando quieras.</p>
+                <p className="mt-1 text-white/60 text-sm">Puedes reservar de nuevo cuando quieras.</p>
               </div>
             </div>
 
