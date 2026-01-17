@@ -26,9 +26,11 @@ export default function ReservaCanceladaPage() {
 
           <div className="relative">
             <p className="text-[11px] uppercase tracking-[0.28em] text-white/55">Home • Consumidor</p>
-            <h1 className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight">Reserva cancelada</h1>
+            <h1 className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight">
+              Reserva cancelada ✅
+            </h1>
             <p className="mt-2 text-white/60 text-sm">
-              La cancelación se envió al backend (PATCH) y quedó confirmada.
+              La cancelación se envió al backend correctamente.
             </p>
           </div>
         </div>
@@ -44,33 +46,23 @@ export default function ReservaCanceladaPage() {
               <div className="h-12 w-12 rounded-full border border-white/14 bg-white/[0.05] backdrop-blur-2xl grid place-items-center">
                 <XCircle className="w-6 h-6 text-white/85" />
               </div>
-
               <div>
-                <p className="text-white font-semibold text-lg">Cancelación confirmada ✅</p>
-                <p className="mt-1 text-white/60 text-sm">Puedes reservar nuevamente cuando quieras.</p>
+                <p className="text-white font-semibold text-lg">Cancelación confirmada</p>
+                <p className="mt-1 text-white/60 text-sm">Puedes reservar otra vez cuando quieras.</p>
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2">
-              <button
-                onClick={() => router.push("/Home/consumidor/mis-reservas")}
-                className={cn(
-                  "h-11 px-5 rounded-full font-semibold text-sm inline-flex items-center justify-center gap-2",
-                  "border border-white/14 bg-white/[0.05] hover:bg-white/[0.09] transition",
-                  "text-white/90"
-                )}
-              >
-                Ver mis reservas
-                <ArrowRight className="w-4 h-4 opacity-80" />
-              </button>
-
-              <button
-                onClick={() => router.push("/Home/consumidor/marketplace/productos")}
-                className={cn("h-11 px-5 rounded-full font-semibold text-sm", "bg-white text-black hover:opacity-90 transition")}
-              >
-                Ir al marketplace
-              </button>
-            </div>
+            <button
+              onClick={() => router.push("/Home/consumidor/mis-reservas")}
+              className={cn(
+                "h-11 px-5 rounded-full font-semibold text-sm inline-flex items-center justify-center gap-2",
+                "border border-white/14 bg-white/[0.05] hover:bg-white/[0.09] transition",
+                "text-white/90"
+              )}
+            >
+              Ir a Mis reservas
+              <ArrowRight className="w-4 h-4 opacity-80" />
+            </button>
           </div>
         </section>
       </div>
