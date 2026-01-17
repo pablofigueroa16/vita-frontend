@@ -4,32 +4,47 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, BadgeCheck, Calendar, Clock, User, Mail, X } from "lucide-react";
 
+/* ================= UTIL ================= */
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
+/* ================= TOKENS UI ================= */
 const GLASS_SOFT = "bg-white/[0.04] border border-white/10 backdrop-blur-2xl";
 const GLASS_CARD =
   "bg-white/[0.05] border border-white/12 backdrop-blur-2xl shadow-[0_18px_70px_rgba(0,0,0,0.45)]";
 const HOVER_LED =
   "transition will-change-transform hover:-translate-y-[2px] hover:bg-white/[0.08] hover:border-white/22 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_24px_90px_rgba(0,0,0,0.60)]";
 
-type Ticket = {
-  id?: string;
-  reservationId?: string;
-  listingId?: string;
+type ReservationFromPost = {
+  id: string;
   providerId: string;
-  date: string;
-  startTime: string;
-  endTime: string;
   customerName: string;
   customerEmail: string;
-  status?: string;
-  createdAt?: number;
+  date: string; // "2026-01-23T00:00:00.000Z"
+  startTime: string; // "09:00"
+  endTime: string; // "10:00"
+  status: string; // "CONFIRMED"
+  notes?: any;
+  metadata?: any;
+  createdAt?: string;
+  updatedAt?: string;
 };
+
+const KEY = "vita_last_reservation_v1";
 
 function isCanceled(status?: string) {
   return (status ?? "").toUpperCase().includes("CANCEL");
+}
+
+function formatDate(iso?: string) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function StatusPill({ status }: { status?: string }) {
@@ -42,8 +57,8 @@ function StatusPill({ status }: { status?: string }) {
     "text-[11px] px-3 py-1 rounded-full border border-white/14 bg-white/[0.04] text-white/75";
 
   if (s.includes("CANCEL")) return <span className={danger}>Cancelada</span>;
-  if (s.includes("COMP")) return <span className={base}>Completada</span>;
-  return <span className={ok}>Activa</span>;
+  if (s.includes("CONF")) return <span className={ok}>Confirmada</span>;
+  return <span className={base}>{status ?? "Activa"}</span>;
 }
 
 function ReadField({
@@ -68,71 +83,40 @@ function ReadField({
   );
 }
 
-/** ✅ Carga la reserva recién creada:
- *  1) intenta key global vita_last_reservation_v1
- *  2) si no existe, busca la más reciente entre vita_last_reservation_v1:*
- */
-function loadLatestReservation(): Ticket | null {
+function loadReservation(): ReservationFromPost | null {
   if (typeof window === "undefined") return null;
-
-  // 1) global
   try {
-    const raw = localStorage.getItem("vita_last_reservation_v1");
-    if (raw) return JSON.parse(raw) as Ticket;
-  } catch {}
-
-  // 2) por listing: vit...:<listingId>
-  try {
-    let best: Ticket | null = null;
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (!k) continue;
-      if (!k.startsWith("vita_last_reservation_v1:")) continue;
-
-      const raw = localStorage.getItem(k);
-      if (!raw) continue;
-
-      const t = JSON.parse(raw) as Ticket;
-      const ts = Number(t.createdAt ?? 0);
-
-      if (!best || ts > Number(best.createdAt ?? 0)) best = t;
-    }
-    return best;
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as ReservationFromPost;
   } catch {
     return null;
   }
 }
 
-function updateGlobalTicket(partial: Partial<Ticket>) {
-  const current = loadLatestReservation();
-  if (!current) return;
-  const next = { ...current, ...partial };
-  localStorage.setItem("vita_last_reservation_v1", JSON.stringify(next));
-  if (current.listingId) {
-    localStorage.setItem(`vita_last_reservation_v1:${current.listingId}`, JSON.stringify(next));
-  }
+function saveReservation(r: ReservationFromPost) {
+  localStorage.setItem(KEY, JSON.stringify(r));
 }
 
 export default function ReservaExitosaPage() {
   const router = useRouter();
-  const [ticket, setTicket] = React.useState<Ticket | null>(null);
+  const [res, setRes] = React.useState<ReservationFromPost | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    setTicket(loadLatestReservation());
+    setRes(loadReservation());
   }, []);
 
-  const cancelReservationNow = async () => {
-    const id = ticket?.id ?? ticket?.reservationId;
-    if (!id) return;
-    if (isCanceled(ticket?.status)) return;
+  const onCancel = async () => {
+    if (!res?.id) return;
+    if (isCanceled(res.status)) return;
 
     setLoading(true);
     setErr(null);
 
     try {
-      const url = `http://localhost:3001/reservations/${encodeURIComponent(String(id))}/cancel`;
+      const url = `http://localhost:3001/reservations/${encodeURIComponent(res.id)}/cancel`;
       const resp = await fetch(url, { method: "PATCH" });
 
       if (!resp.ok) {
@@ -140,8 +124,15 @@ export default function ReservaExitosaPage() {
         throw new Error(`Error cancelando (${resp.status}). ${txt || "Intenta de nuevo."}`);
       }
 
-      updateGlobalTicket({ status: "CANCELED" });
-      setTicket(loadLatestReservation());
+      // si el PATCH devuelve json, lo usamos; si no, actualizamos local
+      let patched: any = null;
+      try {
+        patched = await resp.json();
+      } catch {}
+
+      const updated: ReservationFromPost = patched?.id ? patched : { ...res, status: "CANCELED" };
+      saveReservation(updated);
+      setRes(updated);
 
       router.push("/Home/consumidor/reserva-cancelada");
     } catch (e: any) {
@@ -163,10 +154,14 @@ export default function ReservaExitosaPage() {
 
           <div className="relative flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.28em] text-white/55">Home • Consumidor</p>
-              <h1 className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight">Reserva exitosa</h1>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-white/55">
+                Home • Consumidor
+              </p>
+              <h1 className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight">
+                Reserva exitosa
+              </h1>
               <p className="mt-2 text-white/60 text-sm max-w-2xl">
-                Mostrando la reserva que acabas de crear (sin GET).
+                Mostrando la reserva recién creada (guardada desde la respuesta del POST).
               </p>
             </div>
 
@@ -183,15 +178,14 @@ export default function ReservaExitosaPage() {
                 <ArrowRight className="w-4 h-4 opacity-80" />
               </button>
 
-              {/* ✅ cancelar */}
+              {/* ✅ CANCELAR */}
               <button
-                onClick={cancelReservationNow}
-                disabled={loading || !(ticket?.id || ticket?.reservationId) || isCanceled(ticket?.status)}
+                onClick={onCancel}
+                disabled={loading || !res?.id || isCanceled(res?.status)}
                 className={cn(
                   "h-11 px-5 rounded-full font-semibold text-sm inline-flex items-center gap-2",
                   "bg-white text-black hover:opacity-90 transition",
-                  (loading || !(ticket?.id || ticket?.reservationId) || isCanceled(ticket?.status)) &&
-                    "opacity-50 cursor-not-allowed"
+                  (loading || !res?.id || isCanceled(res?.status)) && "opacity-50 cursor-not-allowed"
                 )}
               >
                 <X className="w-4 h-4" />
@@ -208,7 +202,7 @@ export default function ReservaExitosaPage() {
             <div className="absolute right-[-140px] bottom-[-140px] h-[420px] w-[420px] rounded-full bg-white/[0.08] blur-[120px]" />
           </div>
 
-          {ticket ? (
+          {res ? (
             <div className="relative">
               <div className="flex items-start gap-4">
                 <div className="h-12 w-12 rounded-full border border-white/14 bg-white/[0.05] backdrop-blur-2xl grid place-items-center">
@@ -216,35 +210,30 @@ export default function ReservaExitosaPage() {
                 </div>
 
                 <div className="min-w-0">
-                  <p className="text-white font-semibold text-lg">Tu reserva ha sido exitosa ✅</p>
+                  <p className="text-white font-semibold text-lg">Confirmación ✅</p>
                   <div className="mt-3 flex items-center gap-2">
-                    <StatusPill status={ticket.status} />
+                    <StatusPill status={res.status} />
                     {err && <span className="text-[11px] text-red-300/90">{err}</span>}
                   </div>
-
                   <p className="mt-2 text-white/45 text-[11px] truncate">
-                    ID: {ticket.id ?? ticket.reservationId} • Provider: {ticket.providerId}
+                    ID: {res.id} • Provider: {res.providerId}
                   </p>
                 </div>
               </div>
 
-              {/* ✅ FORM bonito */}
               <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <ReadField icon={User} label="Nombre" value={ticket.customerName} />
-                <ReadField icon={Calendar} label="Día" value={ticket.date} />
-                <ReadField icon={Clock} label="Hora" value={`${ticket.startTime} – ${ticket.endTime}`} />
-                <ReadField icon={Mail} label="Correo" value={ticket.customerEmail} />
+                <ReadField icon={User} label="Nombre" value={res.customerName} />
+                <ReadField icon={Mail} label="Correo" value={res.customerEmail} />
+                <ReadField icon={Calendar} label="Día" value={formatDate(res.date)} />
+                <ReadField icon={Clock} label="Hora" value={`${res.startTime} – ${res.endTime}`} />
               </div>
             </div>
           ) : (
             <div className="relative text-center py-10">
-              <p className="text-base font-semibold">No encontré la reserva</p>
+              <p className="text-base font-semibold">No hay reserva para mostrar</p>
               <p className="text-sm text-white/60 mt-1">
-                Asegúrate de guardar el ticket en localStorage después del POST.
-              </p>
-              <p className="text-[11px] text-white/50 mt-2">
-                Tip rápido: revisa en DevTools → Application → Local Storage:
-                <span className="text-white/70"> vita_last_reservation_v1</span>
+                Debes guardar la respuesta del POST en localStorage con key:{" "}
+                <span className="text-white/80">{KEY}</span>
               </p>
             </div>
           )}
