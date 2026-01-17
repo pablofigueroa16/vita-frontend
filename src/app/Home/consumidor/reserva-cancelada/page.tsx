@@ -18,7 +18,6 @@ export default function ReservaCanceladaPage() {
   return (
     <main className="min-h-[100dvh] text-white">
       <div className="mx-auto w-full max-w-[900px] px-6 lg:px-10 py-10 pb-44">
-        {/* HEADER */}
         <div className={cn(GLASS_SOFT, "rounded-[30px] p-6 sm:p-8 relative overflow-hidden")}>
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-24 -top-24 h-[320px] w-[320px] rounded-full bg-white/[0.10] blur-[90px]" />
@@ -26,19 +25,14 @@ export default function ReservaCanceladaPage() {
           </div>
 
           <div className="relative">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-white/55">
-              Home • Consumidor
-            </p>
-            <h1 className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight">
-              Reserva cancelada
-            </h1>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-white/55">Home • Consumidor</p>
+            <h1 className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight">Reserva cancelada</h1>
             <p className="mt-2 text-white/60 text-sm">
-              La cancelación fue enviada al backend y quedó confirmada.
+              La cancelación se envió al backend (PATCH) y quedó confirmada.
             </p>
           </div>
         </div>
 
-        {/* CARD */}
         <section className={cn("mt-6 rounded-[28px] p-6 relative overflow-hidden", GLASS_CARD)}>
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-24 -top-24 h-[320px] w-[320px] rounded-full bg-white/[0.10] blur-[95px]" />
@@ -53,9 +47,7 @@ export default function ReservaCanceladaPage() {
 
               <div>
                 <p className="text-white font-semibold text-lg">Cancelación confirmada ✅</p>
-                <p className="mt-1 text-white/60 text-sm">
-                  Puedes crear otra reserva cuando quieras.
-                </p>
+                <p className="mt-1 text-white/60 text-sm">Puedes reservar nuevamente cuando quieras.</p>
               </div>
             </div>
 
@@ -74,10 +66,7 @@ export default function ReservaCanceladaPage() {
 
               <button
                 onClick={() => router.push("/Home/consumidor/marketplace/productos")}
-                className={cn(
-                  "h-11 px-5 rounded-full font-semibold text-sm",
-                  "bg-white text-black hover:opacity-90 transition"
-                )}
+                className={cn("h-11 px-5 rounded-full font-semibold text-sm", "bg-white text-black hover:opacity-90 transition")}
               >
                 Ir al marketplace
               </button>
