@@ -24,10 +24,10 @@ type Reservation = {
   providerId: string;
   customerName: string;
   customerEmail: string;
-  date: string; // "2026-01-23T00:00:00.000Z"
-  startTime: string; // "09:00"
-  endTime: string; // "10:00"
-  status: string; // "CONFIRMED"
+  date: string;       // "2026-01-23T00:00:00.000Z"
+  startTime: string;  // "09:00"
+  endTime: string;    // "10:00"
+  status: string;     // "CONFIRMED"
   createdAt?: string;
   updatedAt?: string;
 };
@@ -77,35 +77,46 @@ export default function ReservaExitosaPage() {
 
   const [res, setRes] = React.useState<Reservation | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
 
   // ✅ trae la reserva recién creada (guardada desde el POST)
   React.useEffect(() => {
     setRes(loadReservation());
   }, []);
 
-  // ✅ CANCELAR: pega al BACK y REDIRIGE SIEMPRE
+  // ✅ cancelar con PATCH (SIN TOKEN) y redirigir
   const onCancel = async () => {
-    if (loading) return; // evita spam
+    if (loading) return; // evita spam sin disabled
+    if (!res?.id) {
+      setErr("No hay id de reserva para cancelar.");
+      return;
+    }
+
     setLoading(true);
+    setErr(null);
 
     try {
-      if (res?.id) {
-        const url = `http://localhost:3001/reservations/${encodeURIComponent(res.id)}/cancel`;
+      const url = `http://localhost:3000/reservations/${encodeURIComponent(res.id)}/cancel`;
 
-        // ✅ SIN TOKEN
-        await fetch(url, { method: "PATCH" });
 
-        // ✅ guarda local como cancelada (MVP)
-        localStorage.setItem(KEY, JSON.stringify({ ...res, status: "CANCELED" }));
+      const resp = await fetch(url, {
+        method: "PATCH",
+      });
+
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => "");
+        throw new Error(`Error cancelando (${resp.status}). ${txt || "Intenta de nuevo."}`);
       }
-    } catch (e) {
-      // si falla NO importa para la redirección
-      console.log("Error cancelando en el backend:", e);
+
+      // ✅ guarda local como cancelada (MVP)
+      localStorage.setItem(KEY, JSON.stringify({ ...res, status: "CANCELED" }));
+
+      // ✅ redirige a la vista cancelada
+      router.push("/Home/consumidor/reserva-cancelada");
+    } catch (e: any) {
+      setErr(e?.message ?? "Error cancelando reserva");
     } finally {
       setLoading(false);
-
-      // ✅ SIEMPRE REDIRIGE (LO QUE PEDISTE)
-      router.push("/Home/consumidor/reserva-cancelada");
     }
   };
 
@@ -177,6 +188,7 @@ export default function ReservaExitosaPage() {
                 <div className="min-w-0">
                   <p className="text-white font-semibold text-lg">Confirmación</p>
                   <p className="mt-1 text-white/60 text-sm">ID: {res.id}</p>
+                  {err && <p className="mt-2 text-[11px] text-red-300/90">{err}</p>}
                 </div>
               </div>
 
