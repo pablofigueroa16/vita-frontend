@@ -56,13 +56,45 @@ type StoredReservation = {
 };
 
 /* ================= TOKENS UI ================= */
-const GLASS_SOFT =
-  "bg-white/[0.04] border border-white/10 backdrop-blur-2xl";
+const GLASS_SOFT = "bg-white/[0.04] border border-white/10 backdrop-blur-2xl";
 const HOVER_LED =
   "transition will-change-transform hover:-translate-y-[2px] hover:bg-white/[0.08] hover:border-white/22 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_24px_90px_rgba(0,0,0,0.60)]";
 
-/* ================= BACKEND API ================= */
-const API_BASE = "http://localhost:3000";
+/* ================= API (como tu screenshot) ================= */
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+function getToken() {
+  if (typeof window === "undefined") return null;
+  // ⚠️ cambia la key si tú guardas el token con otro nombre
+  return localStorage.getItem("token");
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers,
+  });
+
+  if (!res.ok) {
+    let msg = `Error (${res.status})`;
+    try {
+      const data = await res.json();
+      msg = data?.message ?? data?.error ?? msg;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  return res.json().catch(() => ({} as T));
+}
 
 type CreateReservationBody = {
   customerName: string;
@@ -81,40 +113,16 @@ function addOneHour(startTime: string) {
 }
 
 async function createReservation(body: CreateReservationBody) {
-  const res = await fetch(`${API_BASE}/reservations`, {
+  return apiFetch<any>("/reservations", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-
-  if (!res.ok) {
-    let msg = `Error creando reserva (${res.status})`;
-    try {
-      const data = await res.json();
-      msg = data?.message ?? data?.error ?? msg;
-    } catch {}
-    throw new Error(msg);
-  }
-
-  return res.json().catch(() => ({}));
 }
 
 async function cancelReservation(reservationId: string) {
-  const res = await fetch(`${API_BASE}/reservations/${reservationId}/cancel`, {
+  return apiFetch<any>(`/reservations/${reservationId}/cancel`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
   });
-
-  if (!res.ok) {
-    let msg = `Error cancelando reserva (${res.status})`;
-    try {
-      const data = await res.json();
-      msg = data?.message ?? data?.error ?? msg;
-    } catch {}
-    throw new Error(msg);
-  }
-
-  return res.json().catch(() => ({}));
 }
 
 /* ================= DATA ================= */
@@ -143,6 +151,7 @@ function hourlySlots(startHour = 10, endHour = 18) {
 }
 const DEFAULT_SLOTS = hourlySlots(10, 18);
 
+// demo providerId (luego lo traes del backend por listing real)
 const DEMO_PROVIDER_ID = "87f5ad07-ed05-450e-90e4-444e284f2166";
 
 const IMG_POOL_9: Record<CategoryKey, string[]> = {
@@ -290,7 +299,7 @@ export default function MarketplaceCategoryPage() {
   return (
     <main className="min-h-[100dvh] text-white">
       <div className="mx-auto w-full max-w-[1280px] px-6 lg:px-10 py-10 pb-44">
-        {/* ✅ HERO / BANNER con logo + contacto + CTAs */}
+        {/* HERO / BANNER */}
         <div className={cn(GLASS_SOFT, "rounded-[30px] p-6 sm:p-8 relative overflow-hidden")}>
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-24 -top-24 h-[320px] w-[320px] rounded-full bg-white/[0.10] blur-[90px]" />
@@ -298,9 +307,7 @@ export default function MarketplaceCategoryPage() {
           </div>
 
           <div className="relative grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 items-start">
-            {/* Left */}
             <div className="flex gap-5 items-start">
-              {/* LOGO */}
               <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl border border-white/14 bg-white/[0.06] backdrop-blur-2xl grid place-items-center overflow-hidden">
                 {/* Cambia por: <img src="/logo.png" alt="Vita" className="h-full w-full object-contain p-3" /> */}
                 <span className="text-white/80 text-sm font-semibold">VITA</span>
@@ -320,7 +327,6 @@ export default function MarketplaceCategoryPage() {
                   {CATEGORY_DEFAULT_TYPE[category] === "servicio" ? "reservar por hora" : "comprar"}.
                 </p>
 
-                {/* CONTACTO */}
                 <div className="mt-4 flex flex-wrap gap-2 text-[12px] text-white/70">
                   <span className="px-3 py-1 rounded-full border border-white/12 bg-white/[0.04]">
                     ✉️ soporte@vita.app
@@ -335,87 +341,33 @@ export default function MarketplaceCategoryPage() {
               </div>
             </div>
 
-            {/* Right CTAs */}
-            <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:items-end">
-              <div className="flex flex-wrap gap-2 lg:justify-end">
+            {/* SOLO 2 BOTONES */}
+            <div className="flex flex-col items-start lg:items-end gap-2">
+              <div className="flex gap-2 flex-wrap lg:justify-end">
                 <button
-                  onClick={() => router.push("/Home/consumidor/mis-reservas")}
+                  onClick={() => {
+                    const el = document.getElementById("vita-grid");
+                    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
                   className={cn(
                     "h-11 px-5 rounded-full font-semibold text-sm",
-                    "border border-white/14 bg-white/[0.06] hover:bg-white/[0.10] transition",
-                    "text-white"
+                    "border border-white/14 bg-white/[0.05] hover:bg-white/[0.09] transition",
+                    "text-white/90"
                   )}
                 >
-                  Mis reservas
+                  Ver feed
                 </button>
 
                 <button
-                  onClick={() => router.push("/Home/consumidor/productos")}
+                  onClick={() => router.push("/Home/consumidor/mis-reservas")}
                   className={cn(
                     "h-11 px-5 rounded-full font-semibold text-sm",
                     "bg-white text-black hover:opacity-90 transition"
                   )}
                 >
-                  Explorar catálogo
+                  Mis reservas
                 </button>
               </div>
-
-              <div className="flex flex-wrap gap-2 lg:justify-end">
-                <button
-                  onClick={() => router.push("/Home/consumidor/contacto")}
-                  className={cn(
-                    "h-11 px-5 rounded-full text-sm",
-                    "border border-white/14 bg-white/[0.04] hover:bg-white/[0.08] transition",
-                    "text-white/85"
-                  )}
-                >
-                  Contactar
-                </button>
-
-                <button
-                  onClick={() => router.back()}
-                  className={cn(
-                    "h-11 px-5 rounded-full text-sm",
-                    "border border-white/14 bg-white/[0.04] hover:bg-white/[0.08] transition",
-                    "text-white/85"
-                  )}
-                >
-                  Volver
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* CTA strip */}
-          <div className="relative mt-6 rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p className="text-white/70 text-sm">
-              ⚡ Tip: abre un item y reserva en 1 minuto dentro de Vita.
-            </p>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  const el = document.getElementById("vita-grid");
-                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-                className={cn(
-                  "h-10 px-4 rounded-full text-sm font-semibold",
-                  "border border-white/14 bg-white/[0.05] hover:bg-white/[0.09] transition",
-                  "text-white/85"
-                )}
-              >
-                Ver feed
-              </button>
-
-              <button
-                onClick={() => router.push("/Home/consumidor/mis-reservas")}
-                className={cn(
-                  "h-10 px-4 rounded-full text-sm font-semibold",
-                  "bg-white text-black hover:opacity-90 transition"
-                )}
-              >
-                Ver mis reservas
-              </button>
             </div>
           </div>
         </div>
@@ -458,6 +410,7 @@ export default function MarketplaceCategoryPage() {
 function ListingModal({ listing, onClose }: { listing: Product; onClose: () => void }) {
   const router = useRouter();
   const isService = listing.type === "servicio";
+
   const [idx, setIdx] = React.useState(0);
 
   const [fullName, setFullName] = React.useState("");
@@ -470,6 +423,7 @@ function ListingModal({ listing, onClose }: { listing: Product; onClose: () => v
 
   const [date, setDate] = React.useState(today);
   const [time, setTime] = React.useState("10:00");
+
   const [qty, setQty] = React.useState(1);
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -480,8 +434,13 @@ function ListingModal({ listing, onClose }: { listing: Product; onClose: () => v
 
   React.useEffect(() => {
     if (!isService) return;
+
     const stored = loadLastReservation(listing.id);
     setLastRes(stored);
+
+    const lastEmail = localStorage.getItem("vita_last_customer_email_v1");
+    if (lastEmail && !email) setEmail(lastEmail);
+
     if (stored?.date && stored?.startTime) {
       setReservedLocal((prev) => {
         const next = new Set(prev);
@@ -489,6 +448,7 @@ function ListingModal({ listing, onClose }: { listing: Product; onClose: () => v
         return next;
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isService, listing.id]);
 
   const reservedTimesForDay = React.useMemo(() => {
@@ -556,6 +516,8 @@ function ListingModal({ listing, onClose }: { listing: Product; onClose: () => v
         next.add(`${payload.date}|${payload.startTime}`);
         return next;
       });
+
+      localStorage.setItem("vita_last_customer_email_v1", payload.customerEmail);
 
       onClose();
       router.push("/Home/consumidor/mis-reservas");
@@ -673,7 +635,7 @@ function ListingModal({ listing, onClose }: { listing: Product; onClose: () => v
               </div>
             </div>
 
-            {/* right */}
+            {/* right: contenido + footer fijo */}
             <div className="flex flex-col min-h-0">
               <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-6">
                 <div className={cn("rounded-[18px] p-3", "bg-white/[0.05] border border-white/10 backdrop-blur-2xl")}>
@@ -848,6 +810,7 @@ function ListingModal({ listing, onClose }: { listing: Product; onClose: () => v
               </div>
             </div>
           </div>
+          {/* end body */}
         </div>
       </div>
     </div>

@@ -14,7 +14,37 @@ const GLASS_SOFT =
 const HOVER_LED =
   "transition will-change-transform hover:-translate-y-[2px] hover:bg-white/[0.08] hover:border-white/22 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_24px_90px_rgba(0,0,0,0.60)]";
 
-const API_BASE = "http://localhost:3000";
+/* ================= API (como tu screenshot) ================= */
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+function getToken() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token");
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API}${path}`, { ...init, headers });
+
+  if (!res.ok) {
+    let msg = `Error (${res.status})`;
+    try {
+      const data = await res.json();
+      msg = data?.message ?? data?.error ?? msg;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  return res.json().catch(() => ({} as T));
+}
 
 /** Ajusta esto al JSON real que te devuelva el backend */
 type ReservationDTO = {
@@ -22,55 +52,28 @@ type ReservationDTO = {
   customerName: string;
   customerEmail: string;
   providerId: string;
-  date: string; // "2026-01-14"
-  startTime: string; // "09:00"
-  endTime: string; // "10:00"
+  date: string;
+  startTime: string;
+  endTime: string;
   status?: "ACTIVE" | "CANCELED" | "COMPLETED" | string;
   createdAt?: string | number;
 };
 
 async function fetchReservationsByEmail(customerEmail: string): Promise<ReservationDTO[]> {
-  const url = `${API_BASE}/reservations?customerEmail=${encodeURIComponent(customerEmail)}`;
+  const data = await apiFetch<any>(
+    `/reservations?customerEmail=${encodeURIComponent(customerEmail)}`,
+    { method: "GET" }
+  );
 
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
-
-  if (!res.ok) {
-    let msg = `Error cargando reservas (${res.status})`;
-    try {
-      const data = await res.json();
-      msg = data?.message ?? data?.error ?? msg;
-    } catch {}
-    throw new Error(msg);
-  }
-
-  const data = await res.json();
-
-  // ✅ soporta diferentes formatos: array directo o { reservations: [...] }
-  const list: ReservationDTO[] =
-    Array.isArray(data) ? data : Array.isArray(data?.reservations) ? data.reservations : [];
-
-  return list;
+  return Array.isArray(data)
+    ? data
+    : Array.isArray(data?.reservations)
+    ? data.reservations
+    : [];
 }
 
 async function cancelReservation(reservationId: string) {
-  const res = await fetch(`${API_BASE}/reservations/${reservationId}/cancel`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-  });
-
-  if (!res.ok) {
-    let msg = `Error cancelando reserva (${res.status})`;
-    try {
-      const data = await res.json();
-      msg = data?.message ?? data?.error ?? msg;
-    } catch {}
-    throw new Error(msg);
-  }
-
-  return res.json().catch(() => ({}));
+  return apiFetch<any>(`/reservations/${reservationId}/cancel`, { method: "PATCH" });
 }
 
 function StatusPill({ status }: { status?: string }) {
@@ -86,7 +89,6 @@ function StatusPill({ status }: { status?: string }) {
 }
 
 export default function MisReservasPage() {
-  // ✅ Autocompletado: si ya guardas email en localStorage, lo toma
   const [email, setEmail] = React.useState("");
   React.useEffect(() => {
     const last = localStorage.getItem("vita_last_customer_email_v1");
@@ -121,7 +123,6 @@ export default function MisReservasPage() {
     try {
       await cancelReservation(id);
       setOk("Reserva cancelada ✅");
-      // refresca lista
       const data = await fetchReservationsByEmail(email.trim());
       setItems(data);
     } catch (e: any) {
@@ -134,7 +135,6 @@ export default function MisReservasPage() {
   return (
     <main className="min-h-[100dvh] text-white">
       <div className="mx-auto w-full max-w-[1280px] px-6 lg:px-10 py-10 pb-44">
-        {/* Header */}
         <div className={cn(GLASS_SOFT, "rounded-[30px] p-6 sm:p-8 relative overflow-hidden")}>
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-24 -top-24 h-[320px] w-[320px] rounded-full bg-white/[0.10] blur-[90px]" />
@@ -194,75 +194,70 @@ export default function MisReservasPage() {
           </div>
         </div>
 
-        {/* List */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {items.map((r) => (
-            <div
-              key={r.id}
-              className={cn(
-                GLASS,
-                HOVER_LED,
-                "rounded-[26px] p-5 flex flex-col gap-4"
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-white font-semibold truncate">
-                    {r.customerName || "Reserva"}
-                  </p>
-                  <p className="text-white/60 text-sm truncate">
-                    {r.customerEmail} • Provider: {r.providerId}
-                  </p>
-                </div>
-                <StatusPill status={r.status} />
-              </div>
+          {items.map((r) => {
+            const isCanceled = (r.status ?? "").toUpperCase().includes("CANCEL");
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className={cn(GLASS_SOFT, "rounded-[20px] p-4")}>
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-white/55">
-                    Fecha
-                  </p>
-                  <p className="mt-1 text-white/85 text-sm inline-flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-white/70" />
-                    {r.date}
-                  </p>
+            return (
+              <div
+                key={r.id}
+                className={cn(GLASS, HOVER_LED, "rounded-[26px] p-5 flex flex-col gap-4")}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold truncate">
+                      {r.customerName || "Reserva"}
+                    </p>
+                    <p className="text-white/60 text-sm truncate">
+                      {r.customerEmail} • Provider: {r.providerId}
+                    </p>
+                  </div>
+                  <StatusPill status={r.status} />
                 </div>
 
-                <div className={cn(GLASS_SOFT, "rounded-[20px] p-4")}>
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-white/55">
-                    Hora
-                  </p>
-                  <p className="mt-1 text-white/85 text-sm">
-                    {r.startTime} – {r.endTime}
-                  </p>
-                </div>
-              </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className={cn(GLASS_SOFT, "rounded-[20px] p-4")}>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-white/55">
+                      Fecha
+                    </p>
+                    <p className="mt-1 text-white/85 text-sm inline-flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-white/70" />
+                      {r.date}
+                    </p>
+                  </div>
 
-              <div className="flex flex-col sm:flex-row gap-2">
+                  <div className={cn(GLASS_SOFT, "rounded-[20px] p-4")}>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-white/55">
+                      Hora
+                    </p>
+                    <p className="mt-1 text-white/85 text-sm">
+                      {r.startTime} – {r.endTime}
+                    </p>
+                  </div>
+                </div>
+
                 <button
                   onClick={() => onCancel(r.id)}
-                  disabled={loading || (r.status ?? "").toUpperCase().includes("CANCEL")}
+                  disabled={loading || isCanceled}
                   className={cn(
                     "h-11 w-full rounded-full font-semibold inline-flex items-center justify-center gap-2",
                     "border border-white/18 bg-white/[0.04] backdrop-blur-2xl hover:bg-white/[0.08] transition",
-                    (loading || (r.status ?? "").toUpperCase().includes("CANCEL")) &&
-                      "opacity-50 cursor-not-allowed"
+                    (loading || isCanceled) && "opacity-50 cursor-not-allowed"
                   )}
+                  title={isCanceled ? "Ya está cancelada" : "Cancelar"}
                 >
                   <X className="w-4 h-4" />
                   Cancelar
                   <ArrowRight className="w-4 h-4 opacity-80" />
                 </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {!loading && email.trim() && items.length === 0 && (
             <div className={cn(GLASS_SOFT, "rounded-[26px] p-8 text-center lg:col-span-2")}>
               <p className="text-base font-semibold">No encontramos reservas</p>
-              <p className="text-sm text-white/60 mt-1">
-                Revisa el correo o intenta más tarde.
-              </p>
+              <p className="text-sm text-white/60 mt-1">Revisa el correo o intenta más tarde.</p>
             </div>
           )}
         </div>
