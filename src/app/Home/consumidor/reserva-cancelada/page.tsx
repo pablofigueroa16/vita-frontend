@@ -77,12 +77,12 @@ export default function ReservaCanceladaPage() {
                   "bg-white text-black hover:opacity-90 transition"
                 )}
               >
-                Reservar otra vez
+                Reservar de nuevo
               </button>
             </div>
           </div>
         </section>
-      </div>
+      </div> 
     </main>
   );
 }
