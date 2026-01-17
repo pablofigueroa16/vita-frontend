@@ -24,6 +24,7 @@ function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
+/* ================= TYPES ================= */
 type ListingType = "producto" | "servicio";
 
 type CategoryKey =
