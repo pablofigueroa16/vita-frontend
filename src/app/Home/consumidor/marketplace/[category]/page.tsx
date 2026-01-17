@@ -307,7 +307,7 @@ export default function MarketplaceCategoryPage() {
                 </button>
 
                 <button
-                  onClick={() => router.push("/Home/consumidor/mis-reservas")}
+                  onClick={() => router.push("/Home/consumidor/reserva-exitosa")}
                   className={cn(
                     "h-11 px-5 rounded-full font-semibold text-sm",
                     "bg-white text-black hover:opacity-90 transition"
@@ -482,7 +482,7 @@ function ListingModal({
       localStorage.setItem("vita_last_customer_email_v1", payload.customerEmail);
 
       onClose();
-      router.push("/Home/consumidor/mis-reservas");
+      router.push("/Home/consumidor/reserva-exitosa");
     } catch (e: any) {
       setApiError(e?.message ?? "Error creando reserva");
     } finally {
