@@ -1,6 +1,6 @@
 // src/lib/reservations.ts
-// ✅ Front (Next) en :3001  →  Back en :3000
-// ✅ Usa NEXT_PUBLIC_API_URL en .env.local (ej: http://localhost:3000)
+// ✅ Front: http://localhost:3001
+// ✅ Back:  http://localhost:3000  (NEXT_PUBLIC_API_URL)
 
 export type CreateReservationBody = {
   customerName: string;
@@ -11,14 +11,11 @@ export type CreateReservationBody = {
   endTime: string;    // HH:MM
 };
 
+type ApiErrorShape = { message?: string; error?: string };
 export type ReservationResponse = any;
 
-type ApiErrorShape = { message?: string; error?: string };
-
-/** Base URL del backend */
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-/** Valida que exista NEXT_PUBLIC_API_URL */
 function assertApi() {
   if (!API) {
     throw new Error(
@@ -27,14 +24,11 @@ function assertApi() {
   }
 }
 
-/** Lee token si tu backend usa Bearer Auth (opcional) */
 function getToken() {
   if (typeof window === "undefined") return null;
-  // ⚠️ cambia la key si tú guardas el token con otro nombre
-  return localStorage.getItem("token");
+  return localStorage.getItem("token"); // cambia si usas otra key
 }
 
-/** Parsea JSON sin romper si el backend devuelve vacío */
 async function safeJson(res: Response) {
   try {
     return await res.json();
@@ -43,12 +37,6 @@ async function safeJson(res: Response) {
   }
 }
 
-/**
- * ✅ fetch “pro” para tu API:
- * - agrega Content-Type
- * - agrega Authorization si hay token
- * - maneja errores con mensaje del backend si existe
- */
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   assertApi();
 
@@ -59,14 +47,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...(init?.headers as Record<string, string> | undefined),
   };
 
-  // ✅ Si tu backend usa JWT/Bearer:
+  // Si tu backend usa Bearer:
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${API}${path}`, {
     ...init,
     headers,
-    // ✅ activa si tu backend usa cookies/sesión:
-    // credentials: "include",
   });
 
   const json = await safeJson(res);
@@ -79,16 +65,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(msg);
   }
 
-  // si el backend no devuelve body, devolvemos {} para no romper
   return (json ?? ({} as T)) as T;
 }
 
-/**
- * ✅ EXACTAMENTE el estilo que te pidieron (pero corregido)
- * - usa template string bien: `${...}`
- * - maneja errores
- * - soporta token (opcional)
- */
+// ✅ POST http://localhost:3000/reservations
 export const createReservation = async (data: CreateReservationBody) => {
   return apiFetch<ReservationResponse>("/reservations", {
     method: "POST",
@@ -96,24 +76,10 @@ export const createReservation = async (data: CreateReservationBody) => {
   });
 };
 
-/**
- * ✅ Cancelar reserva
- * Endpoint asumido: PATCH /reservations/:id/cancel
- * (si tu backend usa otra ruta, dime y lo ajusto)
- */
-export const cancelReservation = async (reservationId: string) => {
-  return apiFetch<ReservationResponse>(`/reservations/${reservationId}/cancel`, {
+// ✅ PATCH http://localhost:3000/reservations/:id/cancel
+export const cancelReservation = async (id: string) => {
+  if (!id) throw new Error("Falta id de reserva");
+  return apiFetch<ReservationResponse>(`/reservations/${id}/cancel`, {
     method: "PATCH",
-  });
-};
-
-/**
- * ✅ (Opcional) Traer mis reservas del consumidor
- * Endpoint típico: GET /reservations/me  o  GET /reservations?customerEmail=...
- * Ajusta el path según tu backend.
- */
-export const getMyReservations = async () => {
-  return apiFetch<ReservationResponse>("/reservations/me", {
-    method: "GET",
   });
 };
