@@ -1,32 +1,23 @@
 // src/lib/reservations.ts
-// ✅ Front: http://localhost:3001
-// ✅ Back:  http://localhost:3000  (NEXT_PUBLIC_API_URL)
+// ✅ Front (Next) en :3001  →  Back (Nest) en :3000
+// ✅ Usa NEXT_PUBLIC_API_URL en .env.local (ej: http://localhost:3000)
 
 export type CreateReservationBody = {
   customerName: string;
   customerEmail: string;
   providerId: string;
-  date: string;       // YYYY-MM-DD
-  startTime: string;  // HH:MM
-  endTime: string;    // HH:MM
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
 };
 
 type ApiErrorShape = { message?: string; error?: string };
-export type ReservationResponse = any;
 
-const API = process.env.NEXT_PUBLIC_API_URL;
-
-function assertApi() {
-  if (!API) {
-    throw new Error(
-      "Falta NEXT_PUBLIC_API_URL. Crea .env.local con NEXT_PUBLIC_API_URL=http://localhost:3000 y reinicia pnpm dev"
-    );
-  }
-}
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 function getToken() {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("token"); // cambia si usas otra key
+  return localStorage.getItem("token"); // ⚠️ cambia si tu key es otra
 }
 
 async function safeJson(res: Response) {
@@ -38,8 +29,6 @@ async function safeJson(res: Response) {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  assertApi();
-
   const token = getToken();
 
   const headers: Record<string, string> = {
@@ -47,14 +36,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...(init?.headers as Record<string, string> | undefined),
   };
 
-  // Si tu backend usa Bearer:
+  // ✅ si tu backend usa Bearer, esto es correcto
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API}${path}`, {
-    ...init,
-    headers,
-  });
-
+  const res = await fetch(`${API}${path}`, { ...init, headers });
   const json = await safeJson(res);
 
   if (!res.ok) {
@@ -68,18 +53,21 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return (json ?? ({} as T)) as T;
 }
 
-// ✅ POST http://localhost:3000/reservations
+/**
+ * ✅ POST http://localhost:3000/reservations
+ */
 export const createReservation = async (data: CreateReservationBody) => {
-  return apiFetch<ReservationResponse>("/reservations", {
+  return apiFetch<any>("/reservations", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-// ✅ PATCH http://localhost:3000/reservations/:id/cancel
+/**
+ * ✅ PATCH http://localhost:3000/reservations/:id/cancel
+ */
 export const cancelReservation = async (id: string) => {
-  if (!id) throw new Error("Falta id de reserva");
-  return apiFetch<ReservationResponse>(`/reservations/${id}/cancel`, {
+  return apiFetch<any>(`/reservations/${id}/cancel`, {
     method: "PATCH",
   });
 };
