@@ -13,6 +13,11 @@ import {
   X,
   BadgeCheck,
 } from "lucide-react";
+import {
+  createReservation,
+  cancelReservation,
+  type CreateReservationBody,
+} from "@/app/lib/reservations";
 
 /* ================= UTIL ================= */
 function cn(...classes: Array<string | false | null | undefined>) {
@@ -60,71 +65,6 @@ const GLASS_SOFT = "bg-white/[0.04] border border-white/10 backdrop-blur-2xl";
 const HOVER_LED =
   "transition will-change-transform hover:-translate-y-[2px] hover:bg-white/[0.08] hover:border-white/22 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_24px_90px_rgba(0,0,0,0.60)]";
 
-/* ================= API (como tu screenshot) ================= */
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
-function getToken() {
-  if (typeof window === "undefined") return null;
-  // ⚠️ cambia la key si tú guardas el token con otro nombre
-  return localStorage.getItem("token");
-}
-
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string> | undefined),
-  };
-
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`${API}${path}`, {
-    ...init,
-    headers,
-  });
-
-  if (!res.ok) {
-    let msg = `Error (${res.status})`;
-    try {
-      const data = await res.json();
-      msg = data?.message ?? data?.error ?? msg;
-    } catch {}
-    throw new Error(msg);
-  }
-
-  return res.json().catch(() => ({} as T));
-}
-
-type CreateReservationBody = {
-  customerName: string;
-  customerEmail: string;
-  providerId: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-};
-
-function addOneHour(startTime: string) {
-  const [hh, mm] = startTime.split(":").map((n) => Number(n));
-  const d = new Date(2000, 0, 1, hh, mm || 0, 0, 0);
-  d.setHours(d.getHours() + 1);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-async function createReservation(body: CreateReservationBody) {
-  return apiFetch<any>("/reservations", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-async function cancelReservation(reservationId: string) {
-  return apiFetch<any>(`/reservations/${reservationId}/cancel`, {
-    method: "PATCH",
-  });
-}
-
 /* ================= DATA ================= */
 const CATEGORY_LABEL: Record<CategoryKey, string> = {
   belleza: "Belleza",
@@ -146,12 +86,13 @@ const CATEGORY_DEFAULT_TYPE: Record<CategoryKey, ListingType> = {
 
 function hourlySlots(startHour = 10, endHour = 18) {
   const out: string[] = [];
-  for (let h = startHour; h <= endHour; h++) out.push(`${String(h).padStart(2, "0")}:00`);
+  for (let h = startHour; h <= endHour; h++)
+    out.push(`${String(h).padStart(2, "0")}:00`);
   return out;
 }
 const DEFAULT_SLOTS = hourlySlots(10, 18);
 
-// demo providerId (luego lo traes del backend por listing real)
+// demo providerId (hasta que el back te mande providerId real por item)
 const DEMO_PROVIDER_ID = "87f5ad07-ed05-450e-90e4-444e284f2166";
 
 const IMG_POOL_9: Record<CategoryKey, string[]> = {
@@ -233,7 +174,9 @@ function seedItems(category: CategoryKey): Product[] {
       : `Vita ${CATEGORY_LABEL[category]}`;
 
   return Array.from({ length: 9 }).map((_, i) => {
-    const images = Array.from({ length: 4 }).map((__, k) => imgPool[(i + k) % imgPool.length]);
+    const images = Array.from({ length: 4 }).map(
+      (__, k) => imgPool[(i + k) % imgPool.length]
+    );
 
     return {
       id: `${category}-${i + 1}`,
@@ -279,6 +222,16 @@ function clearLastReservation(listingId: string) {
   localStorage.removeItem(resKey(listingId));
 }
 
+/* ================= HELPERS ================= */
+function addOneHour(startTime: string) {
+  const [hh, mm] = startTime.split(":").map((n) => Number(n));
+  const d = new Date(2000, 0, 1, hh, mm || 0, 0, 0);
+  d.setHours(d.getHours() + 1);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(
+    d.getMinutes()
+  ).padStart(2, "0")}`;
+}
+
 /* ================= PAGE ================= */
 export default function MarketplaceCategoryPage() {
   const params = useParams();
@@ -287,10 +240,12 @@ export default function MarketplaceCategoryPage() {
   const raw = (params?.category ?? "productos") as string;
   const category = decodeURIComponent(raw) as CategoryKey;
 
-  const isValid = (Object.keys(CATEGORY_LABEL) as CategoryKey[]).includes(category);
+  const isValid = (Object.keys(CATEGORY_LABEL) as CategoryKey[]).includes(
+    category
+  );
 
   React.useEffect(() => {
-    if (!isValid) router.replace("/Home/consumidor/productos");
+    if (!isValid) router.replace("/Home/consumidor/marketplace/productos");
   }, [isValid, router]);
 
   const items = React.useMemo(() => seedItems(category), [category]);
@@ -299,8 +254,12 @@ export default function MarketplaceCategoryPage() {
   return (
     <main className="min-h-[100dvh] text-white">
       <div className="mx-auto w-full max-w-[1280px] px-6 lg:px-10 py-10 pb-44">
-        {/* HERO / BANNER */}
-        <div className={cn(GLASS_SOFT, "rounded-[30px] p-6 sm:p-8 relative overflow-hidden")}>
+        <div
+          className={cn(
+            GLASS_SOFT,
+            "rounded-[30px] p-6 sm:p-8 relative overflow-hidden"
+          )}
+        >
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-24 -top-24 h-[320px] w-[320px] rounded-full bg-white/[0.10] blur-[90px]" />
             <div className="absolute right-[-120px] top-10 h-[420px] w-[420px] rounded-full bg-white/[0.07] blur-[110px]" />
@@ -309,7 +268,6 @@ export default function MarketplaceCategoryPage() {
           <div className="relative grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 items-start">
             <div className="flex gap-5 items-start">
               <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl border border-white/14 bg-white/[0.06] backdrop-blur-2xl grid place-items-center overflow-hidden">
-                {/* Cambia por: <img src="/logo.png" alt="Vita" className="h-full w-full object-contain p-3" /> */}
                 <span className="text-white/80 text-sm font-semibold">VITA</span>
               </div>
 
@@ -324,24 +282,14 @@ export default function MarketplaceCategoryPage() {
 
                 <p className="mt-2 text-white/60 text-sm max-w-2xl">
                   Feed premium 3×3 estilo Instagram. Abre un item para{" "}
-                  {CATEGORY_DEFAULT_TYPE[category] === "servicio" ? "reservar por hora" : "comprar"}.
+                  {CATEGORY_DEFAULT_TYPE[category] === "servicio"
+                    ? "reservar por hora"
+                    : "comprar"}
+                  .
                 </p>
-
-                <div className="mt-4 flex flex-wrap gap-2 text-[12px] text-white/70">
-                  <span className="px-3 py-1 rounded-full border border-white/12 bg-white/[0.04]">
-                    ✉️ soporte@vita.app
-                  </span>
-                  <span className="px-3 py-1 rounded-full border border-white/12 bg-white/[0.04]">
-                    📞 +57 300 000 0000
-                  </span>
-                  <span className="px-3 py-1 rounded-full border border-white/12 bg-white/[0.04]">
-                    📷 @vita
-                  </span>
-                </div>
               </div>
             </div>
 
-            {/* SOLO 2 BOTONES */}
             <div className="flex flex-col items-start lg:items-end gap-2">
               <div className="flex gap-2 flex-wrap lg:justify-end">
                 <button
@@ -372,7 +320,7 @@ export default function MarketplaceCategoryPage() {
           </div>
         </div>
 
-        {/* GRID */}
+        {/* GRID 3x3 */}
         <div id="vita-grid" className="mt-6 grid grid-cols-3 gap-3">
           {items.map((p) => (
             <button
@@ -384,53 +332,67 @@ export default function MarketplaceCategoryPage() {
               )}
               aria-label={`Abrir ${p.name}`}
             >
-              <img src={p.images[0]} alt={p.name} className="absolute inset-0 h-full w-full object-cover" />
+              <img
+                src={p.images[0]}
+                alt={p.name}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
 
-              <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition">
-                <div className="absolute -left-10 -top-10 h-[160px] w-[160px] rounded-full bg-white/[0.12] blur-[55px]" />
-                <div className="absolute right-[-60px] bottom-[-60px] h-[190px] w-[190px] rounded-full bg-white/[0.10] blur-[60px]" />
-              </div>
-
               <div className="absolute left-3 bottom-3 right-3">
-                <p className="text-white/90 font-semibold text-[13px] line-clamp-1">{p.name}</p>
-                <p className="text-white/55 text-[11px] line-clamp-1 mt-0.5">{p.store}</p>
+                <p className="text-white/90 font-semibold text-[13px] line-clamp-1">
+                  {p.name}
+                </p>
+                <p className="text-white/55 text-[11px] line-clamp-1 mt-0.5">
+                  {p.store}
+                </p>
               </div>
             </button>
           ))}
         </div>
 
-        {selected && <ListingModal listing={selected} onClose={() => setSelected(null)} />}
+        {selected && (
+          <ListingModal listing={selected} onClose={() => setSelected(null)} />
+        )}
       </div>
     </main>
   );
 }
 
 /* ================= MODAL ================= */
-function ListingModal({ listing, onClose }: { listing: Product; onClose: () => void }) {
+function ListingModal({
+  listing,
+  onClose,
+}: {
+  listing: Product;
+  onClose: () => void;
+}) {
   const router = useRouter();
   const isService = listing.type === "servicio";
 
   const [idx, setIdx] = React.useState(0);
-
   const [fullName, setFullName] = React.useState("");
   const [email, setEmail] = React.useState("");
 
   const today = React.useMemo(() => {
     const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(d.getDate()).padStart(2, "0")}`;
   }, []);
 
   const [date, setDate] = React.useState(today);
   const [time, setTime] = React.useState("10:00");
-
   const [qty, setQty] = React.useState(1);
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [apiError, setApiError] = React.useState<string | null>(null);
 
   const [lastRes, setLastRes] = React.useState<StoredReservation | null>(null);
-  const [reservedLocal, setReservedLocal] = React.useState<Set<string>>(new Set());
+  const [reservedLocal, setReservedLocal] = React.useState<Set<string>>(
+    new Set()
+  );
 
   React.useEffect(() => {
     if (!isService) return;
@@ -489,7 +451,7 @@ function ListingModal({ listing, onClose }: { listing: Product; onClose: () => v
         endTime: addOneHour(time),
       };
 
-      const data = await createReservation(payload);
+      const data: any = await createReservation(payload);
 
       const reservationId =
         data?.id ?? data?.reservation?.id ?? data?.data?.id ?? data?.reservationId ?? null;
@@ -635,7 +597,7 @@ function ListingModal({ listing, onClose }: { listing: Product; onClose: () => v
               </div>
             </div>
 
-            {/* right: contenido + footer fijo */}
+            {/* right */}
             <div className="flex flex-col min-h-0">
               <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-6">
                 <div className={cn("rounded-[18px] p-3", "bg-white/[0.05] border border-white/10 backdrop-blur-2xl")}>
