@@ -1,13 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, BadgeCheck, Calendar, X, QrCode } from "lucide-react";
-import { cancelReservation } from "@/app/lib/reservations";
+import { useRouter } from "next/navigation";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Calendar,
+  Clock,
+  User,
+  Mail,
+  X,
+} from "lucide-react";
 import {
   loadLastReservation,
   updateLastReservation,
-  clearLastReservation,
   type StoredReservation,
 } from "@/app/lib/localReservation";
 
@@ -43,61 +49,25 @@ function StatusPill({ status }: { status?: string }) {
   return <span className={ok}>Activa</span>;
 }
 
-/** QR “visual” sin librerías (estético) */
-function FakeQR({ value }: { value: string }) {
-  const size = 23;
-
-  const grid = React.useMemo(() => {
-    let h = 2166136261;
-    for (let i = 0; i < value.length; i++) {
-      h ^= value.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-
-    const m: number[][] = Array.from({ length: size }, () => Array(size).fill(0));
-    const isFinder = (r: number, c: number) =>
-      (r < 7 && c < 7) || (r < 7 && c > size - 8) || (r > size - 8 && c < 7);
-
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        if (isFinder(r, c)) {
-          const rr = r % 7;
-          const cc = c % 7;
-          const on =
-            rr === 0 ||
-            rr === 6 ||
-            cc === 0 ||
-            cc === 6 ||
-            (rr >= 2 && rr <= 4 && cc >= 2 && cc <= 4);
-          m[r][c] = on ? 1 : 0;
-          continue;
-        }
-        h ^= (r + 1) * 31 + (c + 1) * 17;
-        h = Math.imul(h, 1103515245) + 12345;
-        m[r][c] = (h >>> 0) % 5 === 0 ? 1 : 0;
-      }
-    }
-    return m;
-  }, [value]);
-
+function ReadField({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value?: string;
+}) {
   return (
-    <div
-      className={cn(
-        "rounded-[18px] border border-white/14 bg-white/[0.05] backdrop-blur-2xl p-3",
-        "shadow-[0_20px_70px_rgba(0,0,0,0.35)]"
-      )}
-      aria-label="QR"
-    >
-      <div className="grid" style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
-        {grid.flatMap((row, r) =>
-          row.map((cell, c) => (
-            <div
-              key={`${r}-${c}`}
-              className={cn("aspect-square", cell ? "bg-white/85" : "bg-transparent")}
-              style={{ borderRadius: 2 }}
-            />
-          ))
-        )}
+    <div className={cn(GLASS_SOFT, "rounded-[22px] p-4")}>
+      <p className="text-[11px] uppercase tracking-[0.22em] text-white/55">
+        {label}
+      </p>
+      <div className="mt-2 flex items-center gap-2 text-white/85">
+        <span className="text-white/65">
+          <Icon className="w-4 h-4" />
+        </span>
+        <span className="text-sm font-semibold truncate">{value || "-"}</span>
       </div>
     </div>
   );
@@ -106,20 +76,17 @@ function FakeQR({ value }: { value: string }) {
 /* ================= PAGE ================= */
 export default function ReservaExitosaPage() {
   const router = useRouter();
-  const sp = useSearchParams();
-  const rid = sp.get("rid"); // opcional (si lo mandas por query)
 
   const [res, setRes] = React.useState<StoredReservation | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const stored = loadLastReservation();
-    // si viene rid, puedes validar/mostrar. MVP: mostramos lo guardado.
-    if (stored) setRes(stored);
-  }, [rid]);
+    setRes(loadLastReservation());
+  }, []);
 
-  const onCancel = async () => {
+  // ✅ SIN TOKEN: PATCH http://localhost:3001/reservations/:id/cancel
+  const cancelWithBackend = async () => {
     if (!res?.id) return;
     if (isCanceled(res.status)) return;
 
@@ -127,14 +94,24 @@ export default function ReservaExitosaPage() {
     setErr(null);
 
     try {
-      // ✅ pega al backend
-      await cancelReservation(res.id);
+      const url = `http://localhost:3001/reservations/${encodeURIComponent(
+        String(res.id)
+      )}/cancel`;
 
-      // ✅ actualiza storage/state (MVP)
+      const resp = await fetch(url, { method: "PATCH" });
+
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => "");
+        throw new Error(
+          `Error cancelando (${resp.status}). ${txt || "Intenta de nuevo."}`
+        );
+      }
+
+      // ✅ actualiza ticket local (MVP)
       updateLastReservation({ status: "CANCELED" });
-      const updated = loadLastReservation();
-      setRes(updated);
+      setRes(loadLastReservation());
 
+      // ✅ redirige a la vista cancelada
       router.push("/Home/consumidor/reserva-cancelada");
     } catch (e: any) {
       setErr(e?.message ?? "Error cancelando reserva");
@@ -147,7 +124,12 @@ export default function ReservaExitosaPage() {
     <main className="min-h-[100dvh] text-white">
       <div className="mx-auto w-full max-w-[1100px] px-6 lg:px-10 py-10 pb-44">
         {/* HEADER */}
-        <div className={cn(GLASS_SOFT, "rounded-[30px] p-6 sm:p-8 relative overflow-hidden")}>
+        <div
+          className={cn(
+            GLASS_SOFT,
+            "rounded-[30px] p-6 sm:p-8 relative overflow-hidden"
+          )}
+        >
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-24 -top-24 h-[320px] w-[320px] rounded-full bg-white/[0.10] blur-[90px]" />
             <div className="absolute right-[-120px] top-10 h-[420px] w-[420px] rounded-full bg-white/[0.07] blur-[110px]" />
@@ -162,7 +144,7 @@ export default function ReservaExitosaPage() {
                 Reserva exitosa
               </h1>
               <p className="mt-2 text-white/60 text-sm max-w-2xl">
-                Te dejamos el ticket con QR y un botón de cancelar conectado al backend.
+                Ticket en glass + botón cancelar conectado al backend (SIN token).
               </p>
             </div>
 
@@ -179,20 +161,32 @@ export default function ReservaExitosaPage() {
                 <ArrowRight className="w-4 h-4 opacity-80" />
               </button>
 
+              {/* ✅ ESTE ERA “SEGUIR EXPLORANDO” -> AHORA ES CANCELAR */}
               <button
-                onClick={() => router.push("/Home/consumidor/marketplace/productos")}
+                onClick={cancelWithBackend}
+                disabled={loading || !res?.id || isCanceled(res?.status)}
                 className={cn(
-                  "h-11 px-5 rounded-full font-semibold text-sm",
-                  "bg-white text-black hover:opacity-90 transition"
+                  "h-11 px-5 rounded-full font-semibold text-sm inline-flex items-center gap-2",
+                  "bg-white text-black hover:opacity-90 transition",
+                  (loading || !res?.id || isCanceled(res?.status)) &&
+                    "opacity-50 cursor-not-allowed"
                 )}
+                title={
+                  !res?.id
+                    ? "No hay reserva guardada"
+                    : isCanceled(res?.status)
+                    ? "Ya está cancelada"
+                    : "Cancelar reserva"
+                }
               >
-                Seguir explorando
+                <X className="w-4 h-4" />
+                {loading ? "Cancelando..." : "Cancelar reserva"}
               </button>
             </div>
           </div>
         </div>
 
-        {/* ✅ CARD GLASS PRINCIPAL */}
+        {/* CARD GLASS */}
         <section
           className={cn(
             "mt-6 rounded-[28px] p-5 relative overflow-hidden",
@@ -206,96 +200,54 @@ export default function ReservaExitosaPage() {
           </div>
 
           {res ? (
-            <div className="relative flex flex-col lg:flex-row gap-5 lg:items-center lg:justify-between">
-              <div className="flex items-start gap-4 min-w-0">
+            <div className="relative">
+              <div className="flex items-start gap-4">
                 <div className="h-12 w-12 rounded-full border border-white/14 bg-white/[0.05] backdrop-blur-2xl grid place-items-center">
                   <BadgeCheck className="w-5 h-5 text-white/85" />
                 </div>
 
                 <div className="min-w-0">
-                  <p className="text-white font-semibold text-lg">Tu reserva ha sido exitosa ✅</p>
-                  <p className="mt-1 text-white/60 text-sm">
-                    <span className="text-white/80">{res.date}</span>{" "}
-                    <span className="text-white/80">{res.startTime}</span> –{" "}
-                    <span className="text-white/80">{res.endTime}</span>
+                  <p className="text-white font-semibold text-lg">
+                    Tu reserva ha sido exitosa ✅
                   </p>
-                  <p className="mt-1 text-white/45 text-[11px] truncate">
-                    ID: {res.id} • Provider: {res.providerId}
+                  <p className="mt-1 text-white/60 text-sm">
+                    Aquí tienes el detalle. Puedes cancelar desde el botón superior.
                   </p>
 
                   <div className="mt-3 flex items-center gap-2">
                     <StatusPill status={res.status} />
-                    {err && <span className="text-[11px] text-red-300/90">{err}</span>}
+                    {err && (
+                      <span className="text-[11px] text-red-300/90">{err}</span>
+                    )}
                   </div>
+
+                  <p className="mt-2 text-white/45 text-[11px] truncate">
+                    ID: {res.id} • Provider: {res.providerId}
+                  </p>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full border border-white/14 bg-white/[0.05] backdrop-blur-2xl grid place-items-center">
-                    <QrCode className="w-5 h-5 text-white/85" />
-                  </div>
-                  <FakeQR value={String(res.id)} />
-                </div>
-
-                <button
-                  onClick={onCancel}
-                  disabled={loading || isCanceled(res.status)}
-                  className={cn(
-                    "h-11 px-5 rounded-full font-semibold inline-flex items-center justify-center gap-2",
-                    "bg-white text-black hover:opacity-90 transition",
-                    (loading || isCanceled(res.status)) && "opacity-50 cursor-not-allowed"
-                  )}
-                  title={isCanceled(res.status) ? "Ya está cancelada" : "Cancelar reserva"}
-                >
-                  <X className="w-4 h-4" />
-                  {loading ? "Cancelando..." : "Cancelar"}
-                  <ArrowRight className="w-4 h-4 opacity-80" />
-                </button>
+              {/* ✅ FORM BONITO (READ-ONLY) */}
+              <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <ReadField icon={User} label="Nombre" value={res.customerName} />
+                <ReadField icon={Calendar} label="Día" value={res.date} />
+                <ReadField
+                  icon={Clock}
+                  label="Hora"
+                  value={`${res.startTime} – ${res.endTime}`}
+                />
+                <ReadField icon={Mail} label="Correo" value={res.customerEmail} />
               </div>
             </div>
           ) : (
             <div className="relative text-center py-10">
-              <p className="text-base font-semibold">No encontré un ticket guardado</p>
+              <p className="text-base font-semibold">No encontré una reserva guardada</p>
               <p className="text-sm text-white/60 mt-1">
-                Crea una reserva y vuelve aquí para ver el QR y cancelar.
+                Crea una reserva y vuelve aquí para ver el ticket.
               </p>
             </div>
           )}
         </section>
-
-        {/* DETALLE (opcional) */}
-        {res && (
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className={cn(GLASS_SOFT, "rounded-[26px] p-5")}>
-              <p className="text-[11px] uppercase tracking-[0.22em] text-white/55">Cliente</p>
-              <p className="mt-1 text-white/85 text-sm">{res.customerName}</p>
-              <p className="text-white/60 text-sm">{res.customerEmail}</p>
-            </div>
-
-            <div className={cn(GLASS_SOFT, "rounded-[26px] p-5")}>
-              <p className="text-[11px] uppercase tracking-[0.22em] text-white/55">Horario</p>
-              <p className="mt-2 text-white/85 text-sm inline-flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-white/70" />
-                {res.date} • {res.startTime} – {res.endTime}
-              </p>
-
-              <button
-                onClick={() => {
-                  clearLastReservation();
-                  setRes(null);
-                }}
-                className={cn(
-                  "mt-3 h-10 px-5 rounded-full text-sm",
-                  "border border-white/14 bg-white/[0.05] hover:bg-white/[0.09] transition",
-                  "text-white/80"
-                )}
-              >
-                Limpiar ticket (MVP)
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </main>
   );
