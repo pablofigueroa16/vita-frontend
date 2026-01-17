@@ -24,10 +24,10 @@ type Reservation = {
   providerId: string;
   customerName: string;
   customerEmail: string;
-  date: string;       // "2026-01-23T00:00:00.000Z"
-  startTime: string;  // "09:00"
-  endTime: string;    // "10:00"
-  status: string;     // "CONFIRMED"
+  date: string; // "2026-01-23T00:00:00.000Z"
+  startTime: string; // "09:00"
+  endTime: string; // "10:00"
+  status: string; // "CONFIRMED"
   createdAt?: string;
   updatedAt?: string;
 };
@@ -79,44 +79,41 @@ export default function ReservaExitosaPage() {
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
-  // ✅ trae la reserva recién creada (guardada desde el POST)
   React.useEffect(() => {
     setRes(loadReservation());
   }, []);
 
-  // ✅ cancelar con PATCH (SIN TOKEN) y redirigir
+  // ✅ BACK = 3000 (PATCH) + REDIRIGE SIEMPRE A reserva-cancelada
   const onCancel = async () => {
-    if (loading) return; // evita spam sin disabled
-    if (!res?.id) {
-      setErr("No hay id de reserva para cancelar.");
-      return;
-    }
-
+    if (loading) return; // evita doble click
     setLoading(true);
     setErr(null);
 
     try {
-      const url = `http://localhost:3000/reservations/${encodeURIComponent(res.id)}/cancel`;
+      // Si no hay reserva, igual redirigimos (tu requisito es redirigir)
+      if (res?.id) {
+        const url = `http://localhost:3000/reservations/${encodeURIComponent(res.id)}/cancel`;
 
+        const resp = await fetch(url, { method: "PATCH" });
 
-      const resp = await fetch(url, {
-        method: "PATCH",
-      });
-
-      if (!resp.ok) {
-        const txt = await resp.text().catch(() => "");
-        throw new Error(`Error cancelando (${resp.status}). ${txt || "Intenta de nuevo."}`);
+        // si el back responde error, lo mostramos pero NO bloqueamos redirección
+        if (!resp.ok) {
+          const txt = await resp.text().catch(() => "");
+          setErr(`Error cancelando (${resp.status}). ${txt || ""}`.trim());
+        } else {
+          // MVP local
+          localStorage.setItem(KEY, JSON.stringify({ ...res, status: "CANCELED" }));
+        }
+      } else {
+        setErr("No hay id de reserva (redirigiendo igual).");
       }
-
-      // ✅ guarda local como cancelada (MVP)
-      localStorage.setItem(KEY, JSON.stringify({ ...res, status: "CANCELED" }));
-
-      // ✅ redirige a la vista cancelada
-      router.push("/Home/consumidor/reserva-cancelada");
     } catch (e: any) {
-      setErr(e?.message ?? "Error cancelando reserva");
+      // si falla por CORS / conexión, igual redirigimos
+      setErr(e?.message ?? "Error cancelando en backend");
     } finally {
       setLoading(false);
+      // ✅ SI O SI NAVEGA
+      router.replace("/Home/consumidor/reserva-cancelada");
     }
   };
 
@@ -141,10 +138,12 @@ export default function ReservaExitosaPage() {
               <p className="mt-2 text-white/60 text-sm">
                 Datos exactos con los que acabas de reservar.
               </p>
+              {err && <p className="mt-2 text-[11px] text-red-300/90">{err}</p>}
             </div>
 
             <div className="flex gap-2 flex-wrap sm:justify-end">
               <button
+                type="button"
                 onClick={() => router.push("/Home/consumidor/mis-reservas")}
                 className={cn(
                   "h-11 px-5 rounded-full font-semibold text-sm inline-flex items-center gap-2",
@@ -156,8 +155,9 @@ export default function ReservaExitosaPage() {
                 <ArrowRight className="w-4 h-4 opacity-80" />
               </button>
 
-              {/* ✅ BOTÓN FUNCIONAL: NO disabled → NO cursor prohibido */}
+              {/* ✅ NO disabled → NO cursor prohibido */}
               <button
+                type="button"
                 onClick={onCancel}
                 className={cn(
                   "h-11 px-5 rounded-full font-semibold text-sm inline-flex items-center gap-2",
@@ -188,7 +188,6 @@ export default function ReservaExitosaPage() {
                 <div className="min-w-0">
                   <p className="text-white font-semibold text-lg">Confirmación</p>
                   <p className="mt-1 text-white/60 text-sm">ID: {res.id}</p>
-                  {err && <p className="mt-2 text-[11px] text-red-300/90">{err}</p>}
                 </div>
               </div>
 
