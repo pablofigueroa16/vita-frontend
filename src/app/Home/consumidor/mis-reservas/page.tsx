@@ -2,6 +2,15 @@
 
 import * as React from "react";
 import { ArrowRight, Calendar, Mail, X, QrCode, BadgeCheck } from "lucide-react";
+import { cancelReservation } from "@/app/lib/reservations";
+import {
+  loadLastReservation,
+  loadLastEmail,
+  saveLastEmail,
+  updateLastReservation,
+  clearLastReservation,
+  type StoredReservation,
+} from "@/app/lib/localReservation";
 
 /* ================= UTIL ================= */
 function cn(...classes: Array<string | false | null | undefined>) {
@@ -15,94 +24,11 @@ const GLASS_SOFT = "bg-white/[0.04] border border-white/10 backdrop-blur-2xl";
 const HOVER_LED =
   "transition will-change-transform hover:-translate-y-[2px] hover:bg-white/[0.08] hover:border-white/22 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_24px_90px_rgba(0,0,0,0.60)]";
 
-/* ================= BACKEND ================= */
-// ✅ Front (Next) en :3001  →  Back (Nest) en :3000
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
-/* ================= AUTH (opcional) ================= */
-function getToken() {
-  if (typeof window === "undefined") return null;
-  // ⚠️ usa la misma key donde guardas el token
-  return localStorage.getItem("token");
-}
-
-/* ================= FETCH PRO ================= */
-async function safeJson(res: Response) {
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string> | undefined),
-  };
-
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`${API}${path}`, { ...init, headers });
-  const json = await safeJson(res);
-
-  if (!res.ok) {
-    const msg = (json as any)?.message ?? (json as any)?.error ?? `Error (${res.status})`;
-    throw new Error(msg);
-  }
-
-  return (json ?? ({} as T)) as T;
-}
-
-/* ================= TIPOS ================= */
-type ReservationDTO = {
-  id: string;
-  customerName: string;
-  customerEmail: string;
-  providerId: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  status?: "ACTIVE" | "CANCELED" | "COMPLETED" | string;
-  createdAt?: string | number;
-};
-
-/* ================= SOLO TU RUTA REAL ================= */
-async function cancelReservation(reservationId: string) {
-  // ✅ PATCH http://localhost:3000/reservations/:id/cancel
-  return apiFetch<any>(`/reservations/${reservationId}/cancel`, { method: "PATCH" });
-}
-
-/* ================= MVP FRONT: guardar/leer última reserva =================
-   ✅ Porque tu backend SOLO tiene POST y PATCH (no tiene GET para listar).
-   ✅ Entonces aquí mostramos la “última reserva creada” guardada en localStorage.
-*/
-const LAST_RES_KEY = "vita_last_reservation_v1";
-
-function loadLastReservation(): ReservationDTO | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(LAST_RES_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as ReservationDTO;
-  } catch {
-    return null;
-  }
-}
-
-function saveLastReservation(r: ReservationDTO) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(LAST_RES_KEY, JSON.stringify(r));
-}
-
-function clearLastReservation() {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(LAST_RES_KEY);
-}
-
 /* ================= UI HELPERS ================= */
+function isCanceled(status?: string) {
+  return (status ?? "").toUpperCase().includes("CANCEL");
+}
+
 function StatusPill({ status }: { status?: string }) {
   const s = (status ?? "ACTIVE").toUpperCase();
 
@@ -116,10 +42,6 @@ function StatusPill({ status }: { status?: string }) {
   if (s.includes("CANCEL")) return <span className={danger}>Cancelada</span>;
   if (s.includes("COMP")) return <span className={base}>Completada</span>;
   return <span className={ok}>Activa</span>;
-}
-
-function isCanceled(status?: string) {
-  return (status ?? "").toUpperCase().includes("CANCEL");
 }
 
 /** QR “visual” (estético) sin librerías */
@@ -188,23 +110,31 @@ function FakeQR({ value }: { value: string }) {
 /* ================= PAGE ================= */
 export default function MisReservasPage() {
   const [email, setEmail] = React.useState("");
+  const [lastRes, setLastRes] = React.useState<StoredReservation | null>(null);
+
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [ok, setOk] = React.useState<string | null>(null);
 
-  // ✅ la reserva que mostramos como “exitosa” (MVP front)
-  const [lastRes, setLastRes] = React.useState<ReservationDTO | null>(null);
-
+  // ✅ al entrar: carga email + última reserva guardada
   React.useEffect(() => {
-    const lastEmail = localStorage.getItem("vita_last_customer_email_v1");
-    if (lastEmail) setEmail(lastEmail);
+    const e = loadLastEmail();
+    if (e) setEmail(e);
 
     const stored = loadLastReservation();
     setLastRes(stored);
   }, []);
 
+  const onChangeEmail = (v: string) => {
+    setEmail(v);
+    saveLastEmail(v);
+  };
+
+  // ✅ Botón real que pega al backend (PATCH /reservations/:id/cancel)
   const onCancel = async () => {
     if (!lastRes?.id) return;
+    if (isCanceled(lastRes.status)) return;
+
     setLoading(true);
     setErr(null);
     setOk(null);
@@ -212,14 +142,11 @@ export default function MisReservasPage() {
     try {
       await cancelReservation(lastRes.id);
 
-      // UI: marcamos cancelada y limpiamos local
-      const updated: ReservationDTO = { ...lastRes, status: "CANCELED" };
-      saveLastReservation(updated);
-      setLastRes(updated);
+      // ✅ actualiza localStorage y state (MVP front)
+      updateLastReservation({ status: "CANCELED" });
 
-      // si prefieres borrar completamente:
-      // clearLastReservation();
-      // setLastRes(null);
+      const updated = loadLastReservation();
+      setLastRes(updated);
 
       setOk("Reserva cancelada ✅");
     } catch (e: any) {
@@ -229,10 +156,20 @@ export default function MisReservasPage() {
     }
   };
 
+  // ✅ si quieres botón “limpiar ticket” (opcional)
+  const onClearTicket = () => {
+    clearLastReservation();
+    setLastRes(null);
+    setOk(null);
+    setErr(null);
+  };
+
+  const showSuccessBanner = !!lastRes && !isCanceled(lastRes.status);
+
   return (
     <main className="min-h-[100dvh] text-white">
       <div className="mx-auto w-full max-w-[1280px] px-6 lg:px-10 py-10 pb-44">
-        {/* HERO */}
+        {/* HEADER */}
         <div className={cn(GLASS_SOFT, "rounded-[30px] p-6 sm:p-8 relative overflow-hidden")}>
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-24 -top-24 h-[320px] w-[320px] rounded-full bg-white/[0.10] blur-[90px]" />
@@ -248,15 +185,14 @@ export default function MisReservasPage() {
                 Mis Reservas
               </h1>
               <p className="mt-2 text-white/60 text-sm max-w-2xl">
-                Aquí verás tu ticket (MVP front) y podrás cancelar conectando al backend.
+                MVP Front: mostramos el ticket guardado en localStorage y cancelamos con el backend.
               </p>
             </div>
 
-            {/* Input email (solo UI / referencia) */}
             <div className="w-full lg:w-[520px]">
               <label className="block">
                 <span className="text-[11px] uppercase tracking-[0.22em] text-white/55">
-                  Correo del cliente
+                  Correo del cliente (guardado)
                 </span>
                 <div className="mt-2 relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60">
@@ -264,11 +200,8 @@ export default function MisReservasPage() {
                   </div>
                   <input
                     value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      localStorage.setItem("vita_last_customer_email_v1", e.target.value);
-                    }}
-                    placeholder="Ej: manuel@mail.com"
+                    onChange={(e) => onChangeEmail(e.target.value)}
+                    placeholder="Ej: laura@mail.com"
                     className={cn(
                       "w-full h-11 rounded-full pl-11 pr-4",
                       "border border-white/12 bg-white/[0.05] backdrop-blur-2xl",
@@ -285,78 +218,68 @@ export default function MisReservasPage() {
           </div>
         </div>
 
-        {/* ✅ LETRERO + QR + CANCELAR (conecta con backend) */}
-        <section className="mt-6">
+        {/* ✅ LETRERO ÉXITO + QR + BOTÓN CANCELAR (backend) */}
+        {showSuccessBanner && lastRes && (
+          <section className={cn("mt-6 rounded-[28px] p-5 relative overflow-hidden", GLASS)}>
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute -left-24 -top-24 h-[320px] w-[320px] rounded-full bg-white/[0.10] blur-[95px]" />
+              <div className="absolute right-[-140px] bottom-[-140px] h-[420px] w-[420px] rounded-full bg-white/[0.08] blur-[120px]" />
+            </div>
+
+            <div className="relative flex flex-col lg:flex-row gap-5 lg:items-center lg:justify-between">
+              <div className="flex items-start gap-4 min-w-0">
+                <div className="h-12 w-12 rounded-full border border-white/14 bg-white/[0.05] backdrop-blur-2xl grid place-items-center">
+                  <BadgeCheck className="w-5 h-5 text-white/85" />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-white font-semibold text-lg">
+                    Tu reserva ha sido exitosa ✅
+                  </p>
+                  <p className="mt-1 text-white/60 text-sm">
+                    Muestra este QR al llegar •{" "}
+                    <span className="text-white/80">{lastRes.date}</span>{" "}
+                    <span className="text-white/80">{lastRes.startTime}</span>
+                  </p>
+                  <p className="mt-1 text-white/45 text-[11px] truncate">
+                    ID: {lastRes.id} • Provider: {lastRes.providerId}
+                  </p>
+
+                  <div className="mt-3">
+                    <StatusPill status={lastRes.status} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full border border-white/14 bg-white/[0.05] backdrop-blur-2xl grid place-items-center">
+                    <QrCode className="w-5 h-5 text-white/85" />
+                  </div>
+                  <FakeQR value={lastRes.id} />
+                </div>
+
+                <button
+                  onClick={onCancel}
+                  disabled={loading}
+                  className={cn(
+                    "h-11 px-5 rounded-full font-semibold inline-flex items-center justify-center gap-2",
+                    "bg-white text-black hover:opacity-90 transition",
+                    loading && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  <X className="w-4 h-4" />
+                  {loading ? "Cancelando..." : "Cancelar reserva"}
+                  <ArrowRight className="w-4 h-4 opacity-80" />
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ✅ DETALLE DE LA RESERVA (card) */}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
           {lastRes ? (
-            <div className={cn(GLASS, "rounded-[28px] p-5 relative overflow-hidden")}>
-              <div className="pointer-events-none absolute inset-0">
-                <div className="absolute -left-24 -top-24 h-[320px] w-[320px] rounded-full bg-white/[0.10] blur-[95px]" />
-                <div className="absolute right-[-140px] bottom-[-140px] h-[420px] w-[420px] rounded-full bg-white/[0.08] blur-[120px]" />
-              </div>
-
-              <div className="relative flex flex-col lg:flex-row gap-5 lg:items-center lg:justify-between">
-                <div className="flex items-start gap-4 min-w-0">
-                  <div className="h-12 w-12 rounded-full border border-white/14 bg-white/[0.05] backdrop-blur-2xl grid place-items-center">
-                    <BadgeCheck className="w-5 h-5 text-white/85" />
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="text-white font-semibold text-lg">
-                      Tu reserva ha sido exitosa ✅
-                    </p>
-                    <p className="mt-1 text-white/60 text-sm">
-                      Muestra este QR al llegar •{" "}
-                      <span className="text-white/80">{lastRes.date}</span>{" "}
-                      <span className="text-white/80">{lastRes.startTime}</span>
-                    </p>
-                    <p className="mt-1 text-white/45 text-[11px] truncate">
-                      ID: {lastRes.id} • Provider: {lastRes.providerId}
-                    </p>
-
-                    <div className="mt-3">
-                      <StatusPill status={lastRes.status} />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full border border-white/14 bg-white/[0.05] backdrop-blur-2xl grid place-items-center">
-                      <QrCode className="w-5 h-5 text-white/85" />
-                    </div>
-                    <FakeQR value={lastRes.id} />
-                  </div>
-
-                  <button
-                    onClick={onCancel}
-                    disabled={loading || isCanceled(lastRes.status)}
-                    className={cn(
-                      "h-11 px-5 rounded-full font-semibold inline-flex items-center justify-center gap-2",
-                      "bg-white text-black hover:opacity-90 transition",
-                      (loading || isCanceled(lastRes.status)) && "opacity-50 cursor-not-allowed"
-                    )}
-                    title={isCanceled(lastRes.status) ? "Ya está cancelada" : "Cancelar reserva"}
-                  >
-                    <X className="w-4 h-4" />
-                    {loading ? "Cancelando..." : "Cancelar reserva"}
-                    <ArrowRight className="w-4 h-4 opacity-80" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className={cn(GLASS_SOFT, "rounded-[26px] p-8 text-center")}>
-              <p className="text-base font-semibold">Aún no hay ticket</p>
-              <p className="text-sm text-white/60 mt-1">
-                Crea una reserva primero para que aparezca el letrero de éxito y el QR.
-              </p>
-            </div>
-          )}
-        </section>
-
-        {/* Cards extra (MVP) — muestra la misma reserva como “detalle” */}
-        {lastRes && (
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className={cn(GLASS, HOVER_LED, "rounded-[26px] p-5 flex flex-col gap-4")}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -387,22 +310,49 @@ export default function MisReservasPage() {
                 </div>
               </div>
 
-              <button
-                onClick={onCancel}
-                disabled={loading || isCanceled(lastRes.status)}
-                className={cn(
-                  "h-11 w-full rounded-full font-semibold inline-flex items-center justify-center gap-2",
-                  "border border-white/18 bg-white/[0.04] backdrop-blur-2xl hover:bg-white/[0.08] transition",
-                  (loading || isCanceled(lastRes.status)) && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                <X className="w-4 h-4" />
-                Cancelar
-                <ArrowRight className="w-4 h-4 opacity-80" />
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  onClick={onCancel}
+                  disabled={loading || isCanceled(lastRes.status)}
+                  className={cn(
+                    "h-11 w-full rounded-full font-semibold inline-flex items-center justify-center gap-2",
+                    "border border-white/18 bg-white/[0.04] backdrop-blur-2xl hover:bg-white/[0.08] transition",
+                    (loading || isCanceled(lastRes.status)) && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  <X className="w-4 h-4" />
+                  Cancelar
+                  <ArrowRight className="w-4 h-4 opacity-80" />
+                </button>
+
+                <button
+                  onClick={onClearTicket}
+                  className={cn(
+                    "h-11 w-full rounded-full font-semibold inline-flex items-center justify-center gap-2",
+                    "border border-white/14 bg-white/[0.05] hover:bg-white/[0.09] transition",
+                    "text-white/85"
+                  )}
+                  title="Esto solo limpia el ticket guardado en tu navegador (MVP)."
+                >
+                  Limpiar ticket (MVP)
+                </button>
+              </div>
+
+              {isCanceled(lastRes.status) && (
+                <p className="text-[11px] text-white/55">
+                  Esta reserva ya está cancelada. (UI actualizada desde localStorage)
+                </p>
+              )}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className={cn(GLASS_SOFT, "rounded-[26px] p-8 text-center lg:col-span-2")}>
+              <p className="text-base font-semibold">Aún no hay ticket guardado</p>
+              <p className="text-sm text-white/60 mt-1">
+                Cuando creas una reserva, se guarda en localStorage y aquí aparece el QR + cancelar.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );
