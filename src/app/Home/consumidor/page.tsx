@@ -72,7 +72,7 @@ const offers: Product[] = [
     price: "$9.50",
     store: "Barbería Nova",
     badge: "Flash",
-    img: "https://images.pexels.com/photos/2533266/pexels-photo-2533266.jpeg?auto=compress&w=1200",
+    img: "https://i.pinimg.com/1200x/5b/5d/eb/5b5debddccd4cbacf88623abbb07714c.jpg",
   },
   {
     id: "p2",
@@ -80,7 +80,7 @@ const offers: Product[] = [
     price: "$8.99",
     store: "Barbería Nova",
     badge: "Top",
-    img: "https://images.pexels.com/photos/3737579/pexels-photo-3737579.jpeg?auto=compress&w=1200",
+    img: "https://i.pinimg.com/1200x/88/13/48/881348f29c47b9815c16ea514e3fe490.jpg",
   },
   {
     id: "p3",
@@ -88,7 +88,7 @@ const offers: Product[] = [
     price: "$12.40",
     store: "Vita Beauty",
     badge: "Premium",
-    img: "https://images.pexels.com/photos/3373723/pexels-photo-3373723.jpeg?auto=compress&w=1200",
+    img: "https://i.pinimg.com/736x/7e/14/32/7e14321fa84fb8152322b37a940fbc73.jpg",
   },
 ];
 
@@ -169,7 +169,7 @@ export default function HomeConsumidor() {
 
           <div className="relative">
             <img
-              src="https://images.pexels.com/photos/5632402/pexels-photo-5632402.jpeg?auto=compress&w=1600"
+              src="https://i.pinimg.com/736x/8d/b7/da/8db7da04c1abfad6af48310c3d9ad513.jpg"
               alt="hero"
               className="absolute inset-0 w-full h-full object-cover opacity-50"
             />
